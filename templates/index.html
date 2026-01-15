@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block page_content %}
+<!-- Navegación Rápida -->
+<nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+    <div class="container">
+        <ul class="navbar-nav me-auto">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Stock</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}#caja">Caja</a></li>
+            <li class="nav-item"><a class="nav-link" href="/reporte">Reportes</a></li>
+        </ul>
+        <span class="navbar-text">Rol: {{ user.role }} | Usuario: {{ user.username }}</span>
+    </div>
+</nav>
+
+<!-- Cards Métricas -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center bg-primary text-white">
+            <div class="card-body">
+                <h5 class="card-title">Stock Total</h5>
+                <h2>{{ celulares|length if celulares else 0 }}</h2>
+                <p class="card-text">Celulares disponibles</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-success text-white">
+            <div class="card-body">
+                <h5 class="card-title">Ganancia Total</h5>
+                <h2>{{ ganancia|pesos }}</h2>
+                <p class="card-text">De ventas</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-warning text-white">
+            <div class="card-body">
+                <h5 class="card-title">Ganancia Neta</h5>
+                <h2>{{ ganancia_neta_total|pesos if ganancia_neta_total else '0'|pesos }}</h2>
+                <p class="card-text">Venta - Compra</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center bg-info text-white">
+            <div class="card-body">
+                <h5 class="card-title">Transacciones Hoy</h5>
+                <h2>{{ transacciones|length }}</h2>
+                <p class="card-text">Últimas operaciones</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Búsqueda y Botón Agregar -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <form method="GET" class="d-flex">
+            <input type="text" name="search" class="form-control me-2" placeholder="Buscar por modelo o IMEI" value="{{ search }}">
+            <button type="submit" class="btn btn-outline-secondary">Buscar</button>
+        </form>
+    </div>
+    <div class="col-md-6 text-end">
+        {% if user.role == 'Admin' %}
+            <button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#addModal">+ Agregar Celular</button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal para Agregar Celular (igual que antes, con IMEI1/2 y GB select) -->
+<div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addModalLabel">Agregar Nuevo Celular</h5>
+                <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Atrás</button>
+                <button type="button" class="btn btn-primary" id="nextStep">Adelante</button>
+                <button type="button" class="btn-close float-end" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" id="celularForm">
+                {{ form.hidden_tag() }}
+                <div class="modal-body">
+                    <h6>Datos Básicos</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.modelo.id }}" class="form-label">Modelo <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="{{ form.modelo.id }}" name="{{ form.modelo.name }}" placeholder="Ej: iPhone 15 Pro Max" value="{{ form.modelo.data or '' }}" required>
+                            <div class="form-text">Ingresa el modelo completo de la marca.</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.gb.id }}" class="form-label">GB <span class="text-danger">*</span></label>
+                            {{ form.gb(class="form-select") }}
+                            <div class="form-text">Selecciona capacidad de almacenamiento.</div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.precio_compra.id }}" class="form-label">Precio Compra <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="{{ form.precio_compra.id }}" name="{{ form.precio_compra.name }}" placeholder="Ej: 1500000" value="{{ form.precio_compra.data or '' }}" required>
+                            <div class="form-text">Costo de adquisición.</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.precio_cliente.id }}" class="form-label">Precio Cliente <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="{{ form.precio_cliente.id }}" name="{{ form.precio_cliente.name }}" placeholder="Ej: 2000000" value="{{ form.precio_cliente.data or '' }}" required>
+                            <div class="form-text">Precio de venta al cliente.</div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="{{ form.precio_patinado.id }}" class="form-label">Precio Patinado <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="{{ form.precio_patinado.id }}" name="{{ form.precio_patinado.name }}" placeholder="Ej: 1800000" value="{{ form.precio_patinado.data or '' }}" required>
+                            <div class="form-text">Precio para condición patinado/usado.</div>
+                        </div>
+                    </div>
+
+                    <h6>IMEIs</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.imei1.id }}" class="form-label">IMEI 1 <span class="text-danger">*</span></label>
+                            <input type="text" maxlength="15" pattern="[0-9]{15}" class="form-control" id="{{ form.imei1.id }}" name="{{ form.imei1.name }}" placeholder="Ej: 123456789012345" value="{{ form.imei1.data or '' }}" required>
+                            <div class="form-text">Primer IMEI (obligatorio, 15 dígitos).</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.imei2.id }}" class="form-label">IMEI 2 (opcional)</label>
+                            <input type="text" maxlength="15" pattern="[0-9]{15}" class="form-control" id="{{ form.imei2.id }}" name="{{ form.imei2.name }}" placeholder="Ej: 987654321098765" value="{{ form.imei2.data or '' }}">
+                            <div class="form-text">Segundo IMEI si dual SIM.</div>
+                        </div>
+                    </div>
+
+                    <h6>Estado y Detalles</h6>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.estado.id }}" class="form-label">Estado <span class="text-danger">*</span></label>
+                            {{ form.estado(class="form-select") }}
+                            <div class="form-text">Patinado, Vendido, Servicio Técnico.</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.notas.id }}" class="form-label">Notas</label>
+                            <textarea class="form-control" id="{{ form.notas.id }}" name="{{ form.notas.name }}" rows="3" placeholder="Ej: Recibido por trade-in, en servicio técnico">{{ form.notas.data or '' }}</textarea>
+                            <div class="form-text">Detalles adicionales.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    {{ form.submit(class="btn btn-success") }}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla Stock -->
+<h3>Celulares en Stock ({{ celulares|length if celulares else 0 }})</h3>
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>IMEI1</th>
+                <th>IMEI2</th>
+                <th>Modelo</th>
+                <th>GB</th>
+                <th>Precio Compra</th>
+                <th>Precio Cliente</th>
+                <th>Ganancia Neta</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if celulares %}
+                {% for cel in celulares %}
+                <tr>
+                    <td>{{ cel.imei1 }}</td>
+                    <td>{{ cel.imei2 or 'N/A' }}</td>
+                    <td>{{ cel.modelo }}</td>
+                    <td>{{ cel.gb }}</td>
+                    <td>{{ cel.precio_compra|pesos }}</td>
+                    <td>{{ cel.precio_cliente|pesos }}</td>
+                    <td>{{ (cel.precio_cliente - cel.precio_compra)|pesos }}</td>
+                    <td><span class="badge bg-{{ 'warning' if cel.estado == 'Patinado' else 'danger' if cel.estado == 'Vendido' else 'secondary' }}">{{ cel.estado }}</span></td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            {% if user.role == 'Admin' %}
+                                <a href="{{ url_for('editar', id=cel.id) }}" class="btn btn-warning btn-sm">Editar</a>
+                            {% endif %}
+                            <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#ventaModal{{ cel.id }}">Vendido</button>
+                            <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#retomaModal{{ cel.id }}">💱 Retoma</button>
+                        </div>
+                    </td>
+                </tr>
+                <!-- Modal Vendido (dentro del loop) -->
+                <div class="modal fade" id="ventaModal{{ cel.id }}" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5>Vender {{ cel.modelo }}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('vender', id=cel.id) }}">
+                                <div class="modal-body">
+                                    <p>Selecciona tipo de venta:</p>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="tipo_venta" id="cliente{{ cel.id }}" value="cliente" checked>
+                                        <label class="form-check-label" for="cliente{{ cel.id }}">Al Cliente (Precio: {{ cel.precio_cliente|pesos }})</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="tipo_venta" id="patinado{{ cel.id }}" value="patinado">
+                                        <label class="form-check-label" for="patinado{{ cel.id }}">Patinado (Precio: {{ cel.precio_patinado|pesos }})</label>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                    <button type="submit" class="btn btn-success">Confirmar Venta</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Plan Retoma para {{ cel.modelo }} -->
+                <div class="modal fade" id="retomaModal{{ cel.id }}" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5>Plan Retoma para {{ cel.modelo }}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('retoma') }}">
+                                <input type="hidden" name="celular_id" value="{{ cel.id }}">
+                                <input type="hidden" name="total_venta" value="{{ cel.precio_cliente }}">
+                                <div class="modal-body">
+                                    <h6>Datos del Teléfono Recibido</h6>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">IMEI Recibido</label>
+                                            <input type="text" name="imei_recibido" class="form-control" placeholder="Ej: 123456789012345" required>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Modelo Recibido</label>
+                                            <input type="text" name="modelo_recibido" class="form-control" placeholder="Ej: iPhone 11" required>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">GB Recibido</label>
+                                            <select name="gb_recibido" class="form-select" required>
+                                                <option value="">Selecciona</option>
+                                                <option value="64">64GB</option>
+                                                <option value="128">128GB</option>
+                                                <option value="256">256GB</option>
+                                                <option value="512">512GB</option>
+                                                <option value="1TB">1TB</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Valor Estimado Recibido</label>
+                                            <input type="text" name="valor_estimado" class="form-control" placeholder="Ej: 720000" required>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Cash Recibido</label>
+                                            <input type="text" name="cash_recibido" class="form-control" placeholder="Ej: 500000" value="0" required>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Nombre Cliente</label>
+                                            <input type="text" name="cliente_nombre" class="form-control" placeholder="Ej: Juan Pérez" required>
+                                        </div>
+                                    </div>
+                                    <div class="alert alert-info">
+                                        <strong>Saldo Pendiente Calculado:</strong> Total Venta ({{ cel.precio_cliente|pesos }}) - Cash - Valor Recibido
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                    <button type="submit" class="btn btn-info">Confirmar Retoma</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="9" class="text-center py-4">No hay celulares en stock. <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">¡Agrega uno ahora!</button></td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Sección Caja -->
+<section id="caja">
+    <h3>Caja Reciente</h3>
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead class="table-dark">
+                <tr>
+                    <th>Tipo</th>
+                    <th>Descripción</th>
+                    <th>Monto</th>
+                    <th>Ganancia Neta</th>
+                    <th>Fecha</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if transacciones %}
+                    {% for t in transacciones %}
+                    <tr>
+                        <td><span class="badge bg-success">{{ t.tipo }}</span></td>
+                        <td>{{ t.descripcion }}</td>
+                        <td><strong>{{ t.monto|pesos }}</strong></td>
+                        <td>
+                            <span class="badge bg-{{ 'success' if (t.ganancia_neta or 0) > 0 else 'danger' }}">
+                                {{ (t.ganancia_neta or 0)|pesos }}
+                            </span>
+                        </td>
+                        <td>{{ t.fecha.strftime('%H:%M:%S') }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="5" class="text-center">Sin transacciones aún</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- Script para formatear pesos automáticamente en inputs -->
+<script>
+    // Función para formatear números como pesos colombianos
+    function formatearPesos(valor) {
+        // Remover caracteres no numéricos (excepto puntos y comas)
+        let numeros = valor.replace(/[^\d.,]/g, '');
+        // Si está vacío, retornar vacío
+        if (!numeros) return '';
+        // Remover todos los puntos (separadores de miles previos) pero mantener última coma si existe
+        numeros = numeros.replace(/\./g, '');
+        // Si existe coma, separar la parte decimal
+        if (numeros.includes(',')) {
+            let partes = numeros.split(',');
+            numeros = partes[0] + ',' + partes[1].substring(0, 2); // Máximo 2 decimales
+        }
+        // Agregar separadores de miles (puntos) en la parte entera
+        let partes = numeros.split(',');
+        partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        return partes.join(',');
+    }
+
+    // Aplicar a todos los inputs de precio
+    document.querySelectorAll('input[name="precio_compra"], input[name="precio_cliente"], input[name="precio_patinado"], input[name="valor_estimado"], input[name="cash_recibido"]').forEach(input => {
+        input.addEventListener('input', function() {
+            let valor = this.value;
+            let formateado = formatearPesos(valor);
+            this.value = formateado;
+        });
+
+        // También formatear al cargar la página si ya tiene valor
+        if (this.value) {
+            this.value = formatearPesos(this.value);
+        }
+    });
+</script>
+{% endblock %}
