@@ -180,13 +180,95 @@
                     <td>
                         <div class="btn-group" role="group">
                             {% if user.role == 'Admin' %}
-                                <a href="{{ url_for('editar', id=cel.id) }}" class="btn btn-warning btn-sm">Editar</a>
+                                <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editarModal{{ cel.id }}" onclick="cargarDatosEditar({{ cel.id }})">Editar</button>
                             {% endif %}
                             <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#ventaModal{{ cel.id }}">Vendido</button>
                             <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#retomaModal{{ cel.id }}">💱 Retoma</button>
                         </div>
                     </td>
                 </tr>
+                <!-- Modal Editar -->
+                <div class="modal fade" id="editarModal{{ cel.id }}" tabindex="-1" aria-labelledby="editarModalLabel{{ cel.id }}" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="editarModalLabel{{ cel.id }}">Editar Celular</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('editar', id=cel.id) }}" id="formEditar{{ cel.id }}">
+                                {{ form.hidden_tag() }}
+                                <div class="modal-body">
+                                    <h6>Datos Básicos</h6>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Modelo <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" name="modelo" id="modelo{{ cel.id }}" placeholder="Ej: iPhone 15 Pro Max" required>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">GB <span class="text-danger">*</span></label>
+                                            <select name="gb" class="form-select" id="gb{{ cel.id }}" required>
+                                                <option value="">Selecciona</option>
+                                                <option value="64">64GB</option>
+                                                <option value="128">128GB</option>
+                                                <option value="256">256GB</option>
+                                                <option value="512">512GB</option>
+                                                <option value="1TB">1TB</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">Precio Compra <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" name="precio_compra" id="precio_compra{{ cel.id }}" placeholder="Ej: 1500000" required>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">Precio Cliente <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" name="precio_cliente" id="precio_cliente{{ cel.id }}" placeholder="Ej: 2000000" required>
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label class="form-label">Precio Patinado <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" name="precio_patinado" id="precio_patinado{{ cel.id }}" placeholder="Ej: 1800000" required>
+                                        </div>
+                                    </div>
+
+                                    <h6>IMEIs</h6>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">IMEI 1 <span class="text-danger">*</span></label>
+                                            <input type="text" class="form-control" name="imei1" id="imei1{{ cel.id }}" placeholder="Ej: 123456789012345" required>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">IMEI 2 (opcional)</label>
+                                            <input type="text" class="form-control" name="imei2" id="imei2{{ cel.id }}" placeholder="Ej: 987654321098765">
+                                        </div>
+                                    </div>
+
+                                    <h6>Estado y Detalles</h6>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Estado <span class="text-danger">*</span></label>
+                                            <select name="estado" class="form-select" id="estado{{ cel.id }}" required>
+                                                <option value="">Selecciona</option>
+                                                <option value="local">Local</option>
+                                                <option value="Patinado">Patinado</option>
+                                                <option value="Vendido">Vendido</option>
+                                                <option value="Servicio Técnico">Servicio Técnico</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Notas</label>
+                                            <textarea class="form-control" name="notas" id="notas{{ cel.id }}" rows="2" placeholder="Ej: Recibido por trade-in"></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                    <button type="submit" class="btn btn-success">Guardar Cambios</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
                 <!-- Modal Vendido (dentro del loop) -->
                 <div class="modal fade" id="ventaModal{{ cel.id }}" tabindex="-1">
                     <div class="modal-dialog">
@@ -325,6 +407,24 @@
 
 <!-- Script para formatear pesos automáticamente en inputs -->
 <script>
+    // Función para cargar datos del celular al modal de editar
+    function cargarDatosEditar(celularId) {
+        fetch(`/editar/${celularId}`)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById(`modelo${celularId}`).value = data.modelo;
+                document.getElementById(`gb${celularId}`).value = data.gb;
+                document.getElementById(`precio_compra${celularId}`).value = formatearPesos(data.precio_compra.toString());
+                document.getElementById(`precio_cliente${celularId}`).value = formatearPesos(data.precio_cliente.toString());
+                document.getElementById(`precio_patinado${celularId}`).value = formatearPesos(data.precio_patinado.toString());
+                document.getElementById(`imei1${celularId}`).value = data.imei1;
+                document.getElementById(`imei2${celularId}`).value = data.imei2 || '';
+                document.getElementById(`estado${celularId}`).value = data.estado;
+                document.getElementById(`notas${celularId}`).value = data.notas || '';
+            })
+            .catch(error => console.error('Error cargando datos:', error));
+    }
+
     // Función para formatear números como pesos colombianos
     function formatearPesos(valor) {
         // Remover caracteres no numéricos (excepto puntos y comas)

@@ -61,6 +61,10 @@ python app.py
 
 La aplicación estará disponible en: `http://localhost:5000`
 
+## Ejecutar como servicio de Windows (NSSM)
+
+Para que CellStore se inicie automáticamente con Windows, consulta: [NSSM_GUIDE.md](NSSM_GUIDE.md)
+
 ## Uso
 
 ### Primer acceso

@@ -275,22 +275,51 @@ def editar(id):
     if current_user.role != 'Admin':
         flash('Acceso denegado.', 'error')
         return redirect(url_for('index'))
+    
     celular = Celular.query.get_or_404(id)
-    form = CelularForm(obj=celular)  # Auto-mapea imei1/imei2
-    if form.validate_on_submit():
-        celular.imei1 = form.imei1.data
-        celular.imei2 = form.imei2.data
-        celular.modelo = form.modelo.data
-        celular.gb = form.gb.data
-        celular.precio_compra = limpiar_pesos(form.precio_compra.data)
-        celular.precio_cliente = limpiar_pesos(form.precio_cliente.data)
-        celular.precio_patinado = limpiar_pesos(form.precio_patinado.data)
-        celular.estado = form.estado.data
-        celular.notas = form.notas.data
-        db.session.commit()
-        flash('¡Celular actualizado!', 'success')
-        return redirect(url_for('index'))
-    return render_template('editar.html', form=form, celular=celular)
+    
+    # Si es GET, retornar JSON con los datos (para llenar el modal)
+    if request.method == 'GET':
+        from flask import jsonify
+        return jsonify({
+            'id': celular.id,
+            'imei1': celular.imei1,
+            'imei2': celular.imei2,
+            'modelo': celular.modelo,
+            'gb': celular.gb,
+            'precio_compra': celular.precio_compra,
+            'precio_cliente': celular.precio_cliente,
+            'precio_patinado': celular.precio_patinado,
+            'estado': celular.estado,
+            'notas': celular.notas
+        })
+    
+    # Si es POST, actualizar los datos
+    form = CelularForm()
+    try:
+        if form.validate_on_submit():
+            celular.imei1 = form.imei1.data
+            celular.imei2 = form.imei2.data
+            celular.modelo = form.modelo.data
+            celular.gb = form.gb.data
+            celular.precio_compra = limpiar_pesos(form.precio_compra.data)
+            celular.precio_cliente = limpiar_pesos(form.precio_cliente.data)
+            celular.precio_patinado = limpiar_pesos(form.precio_patinado.data)
+            celular.estado = form.estado.data
+            celular.notas = form.notas.data
+            db.session.commit()
+            flash('¡Celular actualizado!', 'success')
+            return redirect(url_for('index'))
+        else:
+            # Mostrar errores del formulario
+            print(f"Errores del formulario: {form.errors}")
+            for field, errors in form.errors.items():
+                flash(f"{field}: {', '.join(errors)}", 'error')
+    except Exception as e:
+        print(f"Error al actualizar: {str(e)}")
+        flash(f'Error al actualizar celular: {str(e)}', 'error')
+    
+    return redirect(url_for('index'))
 
 @app.route('/eliminar/<int:id>', methods=['POST'])
 @login_required
