@@ -26,7 +26,7 @@
     <div class="col-md-3">
         <div class="card text-center bg-success text-white">
             <div class="card-body">
-                <h5 class="card-title">Ganancia Total</h5>
+                <h5 class="card-title">Ganancia 25Total</h5>
                 <h2>{{ ganancia|pesos }}</h2>
                 <p class="card-text">De ventas</p>
             </div>
@@ -176,7 +176,16 @@
                     <td>{{ cel.precio_compra|pesos }}</td>
                     <td>{{ cel.precio_cliente|pesos }}</td>
                     <td>{{ (cel.precio_cliente - cel.precio_compra)|pesos }}</td>
-                    <td><span class="badge bg-{{ 'warning' if cel.estado == 'Patinado' else 'danger' if cel.estado == 'Vendido' else 'secondary' }}">{{ cel.estado }}</span></td>
+                    <td>
+                        <form method="POST" action="{{ url_for('cambiar_estado', id=cel.id) }}" style="display: inline;">
+                            <select class="form-select form-select-sm" name="nuevo_estado" onchange="this.form.submit();">
+                                <option value="local" {% if cel.estado == 'local' %}selected{% endif %}>Local</option>
+                                <option value="Patinado" {% if cel.estado == 'Patinado' %}selected{% endif %}>Patinado</option>
+                                <option value="Vendido" {% if cel.estado == 'Vendido' %}selected{% endif %}>Vendido</option>
+                                <option value="Servicio Técnico" {% if cel.estado == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
+                            </select>
+                        </form>
+                    </td>
                     <td>
                         <div class="btn-group" role="group">
                             {% if user.role == 'Admin' %}

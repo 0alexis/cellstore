@@ -413,5 +413,22 @@ def retoma():
     flash(f'¡Plan Retoma registrado! Teléfono {celular.modelo} vendido. Recibido: ${cash_recibido}. Saldo pendiente: ${saldo_pendiente if saldo_pendiente > 0 else "Ninguno"}', 'success')
     return redirect(url_for('index'))
 
+# Cambiar estado de celular
+@app.route('/cambiar_estado/<int:id>', methods=['POST'])
+@login_required
+def cambiar_estado(id):
+    if current_user.role != 'Admin':
+        flash('Acceso denegado.', 'error')
+        return redirect(url_for('index'))
+    celular = Celular.query.get_or_404(id)
+    nuevo_estado = request.form.get('nuevo_estado')
+    if nuevo_estado not in ['local', 'Patinado', 'Vendido', 'Servicio Técnico']:
+        flash('Estado inválido.', 'error')
+        return redirect(url_for('index'))
+    celular.estado = nuevo_estado
+    db.session.commit()
+    flash(f'¡Cambio de estado exitoso! {celular.modelo} ahora es {nuevo_estado}.', 'success')
+    return redirect(url_for('index'))
+
 if __name__ == '__main__':
     app.run(debug=True)
