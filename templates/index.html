@@ -24,6 +24,15 @@
         </div>
     </div>
     <div class="col-md-3">
+        <div class="card text-center bg-danger text-white">
+            <div class="card-body">
+                <h5 class="card-title">Inversión Total</h5>
+                <h2>{{ inversion_total|pesos if inversion_total else '0'|pesos }}</h2>
+                <p class="card-text">Capital en mercancía</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
         <div class="card text-center bg-success text-white">
             <div class="card-body">
                 <h5 class="card-title">Ganancia 25Total</h5>
@@ -41,6 +50,8 @@
             </div>
         </div>
     </div>
+</div>
+<div class="row mb-4">
     <div class="col-md-3">
         <div class="card text-center bg-info text-white">
             <div class="card-body">
@@ -178,11 +189,17 @@
                     <td>{{ (cel.precio_cliente - cel.precio_compra)|pesos }}</td>
                     <td>
                         <form method="POST" action="{{ url_for('cambiar_estado', id=cel.id) }}" style="display: inline;">
-                            <select class="form-select form-select-sm" name="nuevo_estado" onchange="this.form.submit();">
-                                <option value="local" {% if cel.estado == 'local' %}selected{% endif %}>Local</option>
-                                <option value="Patinado" {% if cel.estado == 'Patinado' %}selected{% endif %}>Patinado</option>
-                                <option value="Vendido" {% if cel.estado == 'Vendido' %}selected{% endif %}>Vendido</option>
-                                <option value="Servicio Técnico" {% if cel.estado == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
+                              <select class="form-select form-select-sm estado-select
+                                {% if cel.estado == 'Patinado' %}bg-danger text-white
+                                {% elif cel.estado == 'local' %}bg-secondary text-white
+                                {% elif cel.estado == 'Vendido' %}bg-success text-white
+                                {% elif cel.estado == 'Servicio Técnico' %}bg-warning text-dark
+                                {% endif %}" 
+                                name="nuevo_estado" onchange="this.form.submit();">
+                                <option value="local" class="bg-secondary text-white" {% if cel.estado == 'local' %}selected{% endif %}>Local</option>
+                                <option value="Patinado" class="bg-danger text-white" {% if cel.estado == 'Patinado' %}selected{% endif %}>Patinado</option>
+                                <option value="Vendido" class="bg-success text-white" {% if cel.estado == 'Vendido' %}selected{% endif %}>Vendido</option>
+                                <option value="Servicio Técnico" class="bg-warning text-dark" {% if cel.estado == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
                             </select>
                         </form>
                     </td>
@@ -403,7 +420,7 @@
                                 {{ (t.ganancia_neta or 0)|pesos }}
                             </span>
                         </td>
-                        <td>{{ t.fecha.strftime('%H:%M:%S') }}</td>
+                        <td>{{ t.fecha.strftime('%d/%m/%Y %H:%M:%S') }}</td>
                     </tr>
                     {% endfor %}
                 {% else %}

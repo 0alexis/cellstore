@@ -6,6 +6,7 @@ from wtforms import StringField, FloatField, SelectField, TextAreaField, SubmitF
 from wtforms.validators import DataRequired, EqualTo
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
+import pytz
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tu_clave_secreta_cambia_esto'
@@ -17,6 +18,13 @@ import pymysql
 pymysql.install_as_MySQLdb()
 
 db = SQLAlchemy(app)
+
+# Zona horaria de Bogotá, Colombia
+bogota_tz = pytz.timezone('America/Bogota')
+
+def obtener_fecha_bogota():
+    """Retorna la fecha y hora actual de Bogotá, Colombia"""
+    return datetime.now(bogota_tz)
 
 # Filtro para formatear pesos colombianos
 def formato_pesos(valor):
@@ -86,7 +94,7 @@ class TradeIn(db.Model):
     valor_estimado = db.Column(db.Float, nullable=False)
     cash_recibido = db.Column(db.Float, default=0.0)
     saldo_pendiente = db.Column(db.Float, default=0.0)
-    fecha = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha = db.Column(db.DateTime, default=obtener_fecha_bogota)
 
 # Modelo Deuda (después de TradeIn, referencia correcta)
 class Deuda(db.Model):
@@ -112,7 +120,7 @@ class Celular(db.Model):
     estado = db.Column(db.String(20), default='Patinado')
     notas = db.Column(db.Text)
     en_stock = db.Column(db.Boolean, default=True)
-    fecha_entrada = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
 
 # Form CelularForm actualizado (con IMEI1 obligatorio)
 class CelularForm(FlaskForm):
@@ -132,7 +140,7 @@ class Transaccion(db.Model):
     monto = db.Column(db.Float, nullable=False)
     ganancia_neta = db.Column(db.Float, default=0.0)
     descripcion = db.Column(db.Text)
-    fecha = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha = db.Column(db.DateTime, default=obtener_fecha_bogota)
 
 # Forms
 class LoginForm(FlaskForm):
@@ -263,10 +271,14 @@ def index():
     celulares = query.all()
 
     transacciones = Transaccion.query.order_by(Transaccion.fecha.desc()).limit(5).all()
-    ganancia = sum(t.monto for t in Transaccion.query.filter_by(tipo='Venta').all())
-    # Ganancia neta acumulada: suma de ganancia_neta de todas las transacciones de venta
-    ganancia_neta_total = sum((t.ganancia_neta or 0) for t in Transaccion.query.filter_by(tipo='Venta').all())
-    return render_template('index.html', form=form, celulares=celulares, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, search=search, user=current_user)
+    # Ganancia total: suma de montos de todas las ventas (Venta y Venta Retoma)
+    ganancia = sum(t.monto for t in Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma'])).all())
+    # Ganancia neta acumulada: suma de ganancia_neta de todas las transacciones de venta (incluye Venta y Venta Retoma)
+    ventas_todas = Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma'])).all()
+    ganancia_neta_total = sum((t.ganancia_neta or 0) for t in ventas_todas)
+    # Inversión total: suma de precio_compra de todos los celulares en stock
+    inversion_total = sum((c.precio_compra or 0) for c in celulares)
+    return render_template('index.html', form=form, celulares=celulares, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, user=current_user)
 
 # CRUD: Editar, Eliminar (igual, con check rol)
 @app.route('/editar/<int:id>', methods=['GET', 'POST'])
@@ -389,11 +401,12 @@ def retoma():
 
     # Registra transacción de venta retoma
     # Monto: total de la venta (precio de cliente)
-    # Ganancia neta: cash recibido (dinero que entra en caja)
+    # Ganancia neta: cash recibido menos el precio de compra del celular vendido
+    ganancia_neta_retoma = cash_recibido - celular.precio_compra
     trans = Transaccion(
         tipo='Venta Retoma',
         monto=total_venta,  # Monto total de la venta
-        ganancia_neta=cash_recibido,  # Cash es la ganancia que entra en caja
+        ganancia_neta=ganancia_neta_retoma,  # Ganancia real: cash recibido - precio compra
         descripcion=f'Retoma {imei_recibido} por {celular.modelo} IMEI1 {celular.imei1} + cash ${cash_recibido}'
     )
     db.session.add(trans)
@@ -404,7 +417,7 @@ def retoma():
         deuda = Deuda(
             cliente_nombre=request.form['cliente_nombre'],
             monto_pendiente=saldo_pendiente,
-            fecha_vencida=datetime.now().date() + timedelta(days=30),
+            fecha_vencida=obtener_fecha_bogota().date() + timedelta(days=30),
             notas=f'Saldo por retoma {imei_recibido}'
         )
         db.session.add(deuda)
