@@ -6,6 +6,10 @@ from wtforms import StringField, FloatField, SelectField, TextAreaField, SubmitF
 from wtforms.validators import DataRequired, EqualTo
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
+import pytz
+
+# Zona horaria de Bogotá, Colombia
+TIMEZONE_BOGOTA = pytz.timezone('America/Bogota')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tu_clave_secreta_cambia_esto'
@@ -39,6 +43,24 @@ def formato_pesos(valor):
     return f"${entero_formateado},{decimales}"
 
 app.jinja_env.filters['pesos'] = formato_pesos
+
+# Función para formatear fechas a zona horaria de Bogotá
+def formato_fecha_bogota(fecha):
+    """Formatea una fecha a la zona horaria de Bogotá con formato legible"""
+    if not fecha:
+        return ''
+    
+    # Si la fecha no tiene timezone, asumir UTC y convertir
+    if fecha.tzinfo is None:
+        fecha = pytz.UTC.localize(fecha)
+    
+    # Convertir a zona horaria de Bogotá
+    fecha_bogota = fecha.astimezone(TIMEZONE_BOGOTA)
+    
+    # Formato: 15 Ene 2026 10:54:35
+    return fecha_bogota.strftime('%d %b %Y %H:%M:%S')
+
+app.jinja_env.filters['fecha_bogota'] = formato_fecha_bogota
 
 # Función para limpiar valores de pesos (remover puntos y convertir a float)
 def limpiar_pesos(valor):
@@ -132,7 +154,7 @@ class Transaccion(db.Model):
     monto = db.Column(db.Float, nullable=False)
     ganancia_neta = db.Column(db.Float, default=0.0)
     descripcion = db.Column(db.Text)
-    fecha = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha = db.Column(db.DateTime, default=lambda: datetime.now(TIMEZONE_BOGOTA))
 
 # Forms
 class LoginForm(FlaskForm):
