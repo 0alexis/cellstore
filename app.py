@@ -401,12 +401,12 @@ def retoma():
 
     # Registra transacción de venta retoma
     # Monto: total de la venta (precio de cliente)
-    # Ganancia neta: cash recibido menos el precio de compra del celular vendido
-    ganancia_neta_retoma = cash_recibido - celular.precio_compra
+    # Ganancia neta: cash recibido + valor estimado de retoma - precio de compra del celular vendido
+    ganancia_neta_retoma = cash_recibido + valor_estimado - celular.precio_compra
     trans = Transaccion(
         tipo='Venta Retoma',
         monto=total_venta,  # Monto total de la venta
-        ganancia_neta=ganancia_neta_retoma,  # Ganancia real: cash recibido - precio compra
+        ganancia_neta=ganancia_neta_retoma,  # Ganancia real: (cash + retoma) - precio compra
         descripcion=f'Retoma {imei_recibido} por {celular.modelo} IMEI1 {celular.imei1} + cash ${cash_recibido}'
     )
     db.session.add(trans)

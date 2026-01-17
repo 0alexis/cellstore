@@ -35,7 +35,7 @@
     <div class="col-md-3">
         <div class="card text-center bg-success text-white">
             <div class="card-body">
-                <h5 class="card-title">Ganancia 25Total</h5>
+                <h5 class="card-title">Ganancia Total</h5>
                 <h2>{{ ganancia|pesos }}</h2>
                 <p class="card-text">De ventas</p>
             </div>
@@ -169,9 +169,8 @@
                 <th>IMEI2</th>
                 <th>Modelo</th>
                 <th>GB</th>
-                <th>Precio Compra</th>
                 <th>Precio Cliente</th>
-                <th>Ganancia Neta</th>
+                <th>Precio Patinado</th>
                 <th>Estado</th>
                 <th>Acciones</th>
             </tr>
@@ -184,9 +183,8 @@
                     <td>{{ cel.imei2 or 'N/A' }}</td>
                     <td>{{ cel.modelo }}</td>
                     <td>{{ cel.gb }}</td>
-                    <td>{{ cel.precio_compra|pesos }}</td>
                     <td>{{ cel.precio_cliente|pesos }}</td>
-                    <td>{{ (cel.precio_cliente - cel.precio_compra)|pesos }}</td>
+                    <td>{{ cel.precio_patinado|pesos }}</td>
                     <td>
                         <form method="POST" action="{{ url_for('cambiar_estado', id=cel.id) }}" style="display: inline;">
                               <select class="form-select form-select-sm estado-select
