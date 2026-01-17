@@ -131,6 +131,7 @@
     <div class="col-md-6 text-end">
         {% if user.role == 'Admin' %}
             <button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#addModal">+ Agregar Celular</button>
+            <button class="btn btn-outline-primary btn-lg ms-2" data-bs-toggle="modal" data-bs-target="#terceroModal">+ Nuevo Tercero</button>
         {% endif %}
     </div>
 </div>
@@ -216,6 +217,36 @@
     </div>
 </div>
 
+<!-- Modal para crear Tercero -->
+<div class="modal fade" id="terceroModal" tabindex="-1" aria-labelledby="terceroModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="terceroModalLabel">Nuevo Tercero</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('crear_tercero') }}">
+                {{ form.csrf_token }}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Local <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="local" placeholder="Ej: Local 12" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nombre <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="nombre" placeholder="Ej: Juan Pérez" required>
+                    </div>
+                    <div class="alert alert-info">Los terceros son externos al sistema; se usan solo para registrar a quién se patina un equipo.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Tabla Stock -->
 <h3>Celulares en Stock ({{ celulares|length if celulares else 0 }})</h3>
 <div class="table-responsive">
@@ -229,6 +260,7 @@
                 <th>Precio Cliente</th>
                 <th>Precio Patinado</th>
                 <th>Estado</th>
+                <th>Patinado a</th>
                 <th>Acciones</th>
             </tr>
         </thead>
@@ -250,21 +282,34 @@
                                 {% elif cel.estado == 'Vendido' %}bg-success text-white
                                 {% elif cel.estado == 'Servicio Técnico' %}bg-warning text-dark
                                 {% endif %}" 
-                                name="nuevo_estado" onchange="this.form.submit();">
+                                name="nuevo_estado" onchange="handleEstadoChange(this);">
                                 <option value="local" class="bg-secondary text-white" {% if cel.estado == 'local' %}selected{% endif %}>Local</option>
                                 <option value="Patinado" class="bg-danger text-white" {% if cel.estado == 'Patinado' %}selected{% endif %}>Patinado</option>
                                 <option value="Vendido" class="bg-success text-white" {% if cel.estado == 'Vendido' %}selected{% endif %}>Vendido</option>
                                 <option value="Servicio Técnico" class="bg-warning text-dark" {% if cel.estado == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
                             </select>
+                            <select class="form-select form-select-sm mt-1 tercero-selector" name="tercero_id" {% if cel.estado != 'Patinado' %}style="display:none"{% endif %}>
+                                <option value="">Selecciona tercero</option>
+                                {% for t in terceros %}
+                                    <option value="{{ t.id }}" {% if cel.tercero_id == t.id %}selected{% endif %}>{{ t.local }} - {{ t.nombre }}</option>
+                                {% endfor %}
+                            </select>
                         </form>
                     </td>
+                    <td>{{ cel.tercero.local ~ ' - ' ~ cel.tercero.nombre if cel.tercero else 'N/A' }}</td>
                     <td>
-                        <div class="btn-group" role="group">
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Acciones rápidas">
                             {% if user.role == 'Admin' %}
-                                <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editarModal{{ cel.id }}" onclick="cargarDatosEditar({{ cel.id }})">Editar</button>
+                                <button type="button" class="btn btn-outline-warning d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#editarModal{{ cel.id }}" onclick="cargarDatosEditar({{ cel.id }})" title="Editar datos">
+                                    ✏️ <span>Editar</span>
+                                </button>
                             {% endif %}
-                            <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#ventaModal{{ cel.id }}">Vendido</button>
-                            <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#retomaModal{{ cel.id }}">💱 Retoma</button>
+                            <button type="button" class="btn btn-success d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#ventaModal{{ cel.id }}" title="Registrar venta">
+                                ✅ <span>Vendido</span>
+                            </button>
+                            <button type="button" class="btn btn-info d-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#retomaModal{{ cel.id }}" title="Registrar retoma">
+                                🔄 <span>Retoma</span>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -537,6 +582,49 @@
         if (this.value) {
             this.value = formatearPesos(this.value);
         }
+    });
+
+    // Manejo de estado -> requiere tercero cuando es patinado
+    function toggleTerceroSelect(selectEl) {
+        const form = selectEl.closest('form');
+        const terceroSelect = form ? form.querySelector('.tercero-selector') : null;
+        if (!terceroSelect) return;
+        if (selectEl.value === 'Patinado') {
+            terceroSelect.style.display = 'block';
+        } else {
+            terceroSelect.value = '';
+            terceroSelect.style.display = 'none';
+        }
+    }
+
+    function handleEstadoChange(selectEl) {
+        toggleTerceroSelect(selectEl);
+        const form = selectEl.form;
+        const terceroSelect = form ? form.querySelector('.tercero-selector') : null;
+        if (selectEl.value === 'Patinado') {
+            if (!terceroSelect || !terceroSelect.value) {
+                if (terceroSelect) terceroSelect.focus();
+                return; // No enviamos hasta elegir tercero
+            }
+        }
+        form.submit();
+    }
+
+    document.querySelectorAll('.tercero-selector').forEach(sel => {
+        sel.addEventListener('change', function () {
+            const estadoSelect = this.closest('form').querySelector('.estado-select');
+            if (estadoSelect && estadoSelect.value === 'Patinado' && this.value) {
+                this.form.submit();
+            }
+        });
+    });
+
+    document.querySelectorAll('.estado-select').forEach(toggleTerceroSelect);
+
+    // Activar tooltips de Bootstrap para botones de acción
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+        new bootstrap.Tooltip(tooltipTriggerEl);
     });
 </script>
 {% endblock %}

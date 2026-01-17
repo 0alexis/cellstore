@@ -108,6 +108,15 @@ class Deuda(db.Model):
     notas = db.Column(db.Text)
 
 # Modelos Celular y Transaccion
+class Tercero(db.Model):
+    __tablename__ = 'tercero'
+    id = db.Column(db.Integer, primary_key=True)
+    local = db.Column(db.String(80), nullable=False)
+    nombre = db.Column(db.String(120), nullable=False)
+    activo = db.Column(db.Boolean, default=True)
+    creado_en = db.Column(db.DateTime, default=obtener_fecha_bogota)
+
+
 class Celular(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     imei1 = db.Column(db.String(20), unique=True, nullable=False)
@@ -121,6 +130,10 @@ class Celular(db.Model):
     notas = db.Column(db.Text)
     en_stock = db.Column(db.Boolean, default=True)
     fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
+    tercero_id = db.Column(db.Integer, db.ForeignKey('tercero.id'), nullable=True)
+    patinado_en = db.Column(db.DateTime, nullable=True)
+
+    tercero = db.relationship('Tercero', backref='celulares')
 
 # Form CelularForm actualizado (con IMEI1 obligatorio)
 class CelularForm(FlaskForm):
@@ -186,6 +199,21 @@ with app.app_context():
                 conn.execute(text('ALTER TABLE transaccion ADD COLUMN ganancia_neta FLOAT DEFAULT 0.0'))
                 conn.commit()
             print("✓ Migración completada.")
+        # Migración: agregar columnas tercero_id y patinado_en en celular si no existen
+        try:
+            columnas_celular = [col['name'] for col in inspector.get_columns('celular')]
+            if 'tercero_id' not in columnas_celular:
+                print("Migrando tabla celular: agregando columna tercero_id...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE celular ADD COLUMN tercero_id INTEGER NULL'))
+                    conn.commit()
+            if 'patinado_en' not in columnas_celular:
+                print("Migrando tabla celular: agregando columna patinado_en...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE celular ADD COLUMN patinado_en DATETIME NULL'))
+                    conn.commit()
+        except Exception as mig_e:
+            print(f"Nota migración celular: {mig_e}")
     except Exception as e:
         print(f"Nota migración: {e}")
 
@@ -269,6 +297,7 @@ def index():
     if search:
         query = query.filter((Celular.modelo.contains(search)) | (Celular.imei1.contains(search)) | (Celular.imei2.contains(search)))
     celulares = query.all()
+    terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.local, Tercero.nombre).all()
 
     transacciones = Transaccion.query.order_by(Transaccion.fecha.desc()).limit(5).all()
     # Ganancia total: suma de montos de todas las ventas (Venta y Venta Retoma)
@@ -278,7 +307,7 @@ def index():
     ganancia_neta_total = sum((t.ganancia_neta or 0) for t in ventas_todas)
     # Inversión total: suma de precio_compra de todos los celulares en stock
     inversion_total = sum((c.precio_compra or 0) for c in celulares)
-    return render_template('index.html', form=form, celulares=celulares, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, user=current_user)
+    return render_template('index.html', form=form, celulares=celulares, terceros=terceros, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, user=current_user)
 
 # CRUD: Editar, Eliminar (igual, con check rol)
 @app.route('/editar/<int:id>', methods=['GET', 'POST'])
@@ -426,6 +455,32 @@ def retoma():
     flash(f'¡Plan Retoma registrado! Teléfono {celular.modelo} vendido. Recibido: ${cash_recibido}. Saldo pendiente: ${saldo_pendiente if saldo_pendiente > 0 else "Ninguno"}', 'success')
     return redirect(url_for('index'))
 
+
+@app.route('/terceros', methods=['POST'])
+@login_required
+def crear_tercero():
+    if current_user.role != 'Admin':
+        flash('Acceso denegado.', 'error')
+        return redirect(url_for('index'))
+
+    local = (request.form.get('local') or '').strip()
+    nombre = (request.form.get('nombre') or '').strip()
+
+    if not local or not nombre:
+        flash('Local y nombre son obligatorios.', 'error')
+        return redirect(url_for('index'))
+
+    existente = Tercero.query.filter_by(local=local, nombre=nombre).first()
+    if existente:
+        flash('El tercero ya existe con ese local y nombre.', 'error')
+        return redirect(url_for('index'))
+
+    tercero = Tercero(local=local, nombre=nombre)
+    db.session.add(tercero)
+    db.session.commit()
+    flash('Tercero creado.', 'success')
+    return redirect(url_for('index'))
+
 # Cambiar estado de celular
 @app.route('/cambiar_estado/<int:id>', methods=['POST'])
 @login_required
@@ -435,9 +490,33 @@ def cambiar_estado(id):
         return redirect(url_for('index'))
     celular = Celular.query.get_or_404(id)
     nuevo_estado = request.form.get('nuevo_estado')
+    tercero_id = request.form.get('tercero_id')
+
     if nuevo_estado not in ['local', 'Patinado', 'Vendido', 'Servicio Técnico']:
         flash('Estado inválido.', 'error')
         return redirect(url_for('index'))
+
+    if nuevo_estado == 'Patinado':
+        if not tercero_id:
+            flash('Selecciona a quién se patina el equipo.', 'error')
+            return redirect(url_for('index'))
+        try:
+            tercero_id_int = int(tercero_id)
+        except ValueError:
+            flash('Tercero inválido.', 'error')
+            return redirect(url_for('index'))
+
+        tercero = Tercero.query.filter_by(id=tercero_id_int, activo=True).first()
+        if not tercero:
+            flash('Tercero no encontrado o inactivo.', 'error')
+            return redirect(url_for('index'))
+
+        celular.tercero_id = tercero.id
+        celular.patinado_en = obtener_fecha_bogota()
+    else:
+        celular.tercero_id = None
+        celular.patinado_en = None
+
     celular.estado = nuevo_estado
     db.session.commit()
     flash(f'¡Cambio de estado exitoso! {celular.modelo} ahora es {nuevo_estado}.', 'success')
