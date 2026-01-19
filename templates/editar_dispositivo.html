@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block page_content %}
+<!-- Navegación -->
+<nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+    <div class="container">
+        <ul class="navbar-nav me-auto">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Celulares</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('dispositivos') }}">Dispositivos</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('caja') }}">Caja</a></li>
+        </ul>
+        <span class="navbar-text">Rol: {{ user.role }} | Usuario: {{ user.username }}</span>
+    </div>
+</nav>
+
+<h2 class="mb-4">Editar Dispositivo</h2>
+
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipo <span class="text-danger">*</span></label>
+                            {{ form.tipo(class="form-select") }}
+                            {% if form.tipo.errors %}
+                                <div class="text-danger small mt-1">{{ form.tipo.errors[0] }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Marca <span class="text-danger">*</span></label>
+                            {{ form.marca(class="form-control") }}
+                            {% if form.marca.errors %}
+                                <div class="text-danger small mt-1">{{ form.marca.errors[0] }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Modelo <span class="text-danger">*</span></label>
+                            {{ form.modelo(class="form-control") }}
+                            {% if form.modelo.errors %}
+                                <div class="text-danger small mt-1">{{ form.modelo.errors[0] }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Serial/Código</label>
+                            {{ form.serial(class="form-control") }}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Precio Compra <span class="text-danger">*</span></label>
+                            {{ form.precio_compra(class="form-control") }}
+                            {% if form.precio_compra.errors %}
+                                <div class="text-danger small mt-1">{{ form.precio_compra.errors[0] }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Precio Venta <span class="text-danger">*</span></label>
+                            {{ form.precio_venta(class="form-control") }}
+                            {% if form.precio_venta.errors %}
+                                <div class="text-danger small mt-1">{{ form.precio_venta.errors[0] }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Cantidad <span class="text-danger">*</span></label>
+                            {{ form.cantidad(class="form-control", type="number") }}
+                            {% if form.cantidad.errors %}
+                                <div class="text-danger small mt-1">{{ form.cantidad.errors[0] }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Estado <span class="text-danger">*</span></label>
+                            {{ form.estado(class="form-select") }}
+                            {% if form.estado.errors %}
+                                <div class="text-danger small mt-1">{{ form.estado.errors[0] }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Especificaciones</label>
+                        {{ form.especificaciones(class="form-control", rows="3") }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Notas</label>
+                        {{ form.notas(class="form-control", rows="2") }}
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('dispositivos') }}" class="btn btn-secondary">Atrás</a>
+                        <button type="submit" class="btn btn-success">Guardar Cambios</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Función para formatear precio como pesos colombianos
+    function formatearPesos(valor) {
+        if (!valor) return '';
+        // Remover caracteres no numéricos excepto punto y coma
+        let num = valor.toString().replace(/[^\d.,]/g, '');
+        // Remover puntos y reemplazar coma por punto
+        num = num.replace(/\./g, '').replace(',', '.');
+        num = parseFloat(num);
+        
+        if (isNaN(num)) return '';
+        
+        // Convertir a pesos colombianos
+        const entero = Math.floor(num).toString();
+        
+        let entero_formateado = "";
+        for (let i = entero.length - 1, count = 0; i >= 0; i--, count++) {
+            if (count > 0 && count % 3 === 0) {
+                entero_formateado = "." + entero_formateado;
+            }
+            entero_formateado = entero.charAt(i) + entero_formateado;
+        }
+        
+        return entero_formateado;
+    }
+    
+    // Formatear precios con pesos mientras se escribe
+    document.querySelectorAll('input[name="precio_compra"], input[name="precio_venta"]').forEach(input => {
+        input.addEventListener('input', function() {
+            if (this.value) {
+                this.value = formatearPesos(this.value);
+            }
+        });
+    });
+</script>
+{% endblock %}

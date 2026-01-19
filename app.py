@@ -155,6 +155,25 @@ class Transaccion(db.Model):
     descripcion = db.Column(db.Text)
     fecha = db.Column(db.DateTime, default=obtener_fecha_bogota)
 
+# Modelo Dispositivo (para PC, Tablets, iPad, Cámaras, etc.)
+class Dispositivo(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.String(50), nullable=False)  # PC, Tablet, iPad, Cámara, etc.
+    marca = db.Column(db.String(50), nullable=False)
+    modelo = db.Column(db.String(100), nullable=False)
+    especificaciones = db.Column(db.Text)  # RAM, Almacenamiento, Procesador, etc.
+    serial = db.Column(db.String(100), nullable=True)
+    precio_compra = db.Column(db.Float, default=0.0)
+    precio_venta = db.Column(db.Float, default=0.0)
+    estado = db.Column(db.String(20), default='disponible')  # disponible, vendido, dañado, servicio
+    cantidad = db.Column(db.Integer, default=1)
+    notas = db.Column(db.Text)
+    en_stock = db.Column(db.Boolean, default=True)
+    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
+    tercero_id = db.Column(db.Integer, db.ForeignKey('tercero.id'), nullable=True)
+
+    tercero = db.relationship('Tercero', backref='dispositivos')
+
 # Forms
 class LoginForm(FlaskForm):
     username = StringField('Usuario', validators=[DataRequired()])
@@ -178,6 +197,38 @@ class CelularForm(FlaskForm):
     precio_patinado = StringField('Precio Patinado', validators=[DataRequired()])
     estado = SelectField('Estado', choices=[('local', 'local'), ('Patinado', 'Patinado'), ('Vendido', 'Vendido'), ('Servicio Técnico', 'Servicio Técnico')], validators=[DataRequired()])
     notas = TextAreaField('Notas (ej: Parte de pago)')
+    submit = SubmitField('Guardar')
+
+class DispositivoForm(FlaskForm):
+    tipo = SelectField('Tipo de Dispositivo', choices=[
+        ('PC', 'PC'),
+        ('Laptop', 'Laptop'),
+        ('Tablet', 'Tablet'),
+        ('iPad', 'iPad'),
+        ('Cámara', 'Cámara'),
+        ('Monitor', 'Monitor'),
+        ('Teclado', 'Teclado'),
+        ('Mouse', 'Mouse'),
+        ('Auriculares', 'Auriculares'),
+        ('Smartwatch', 'Smartwatch'),
+        ('Impresora', 'Impresora'),
+        ('Router', 'Router'),
+        ('Otro', 'Otro')
+    ], validators=[DataRequired()])
+    marca = StringField('Marca', validators=[DataRequired()])
+    modelo = StringField('Modelo', validators=[DataRequired()])
+    especificaciones = TextAreaField('Especificaciones (RAM, Almacenamiento, Procesador, etc.)')
+    serial = StringField('Serial/Código')
+    precio_compra = StringField('Precio Compra', validators=[DataRequired()])
+    precio_venta = StringField('Precio Venta', validators=[DataRequired()])
+    cantidad = StringField('Cantidad', validators=[DataRequired()], default='1')
+    estado = SelectField('Estado', choices=[
+        ('disponible', 'Disponible'),
+        ('vendido', 'Vendido'),
+        ('dañado', 'Dañado'),
+        ('servicio', 'En Servicio')
+    ], validators=[DataRequired()])
+    notas = TextAreaField('Notas')
     submit = SubmitField('Guardar')
 
 with app.app_context():
@@ -257,6 +308,243 @@ def logout():
     flash('Sesión cerrada.', 'success')
     return redirect(url_for('login'))
 
+@app.route('/caja')
+@login_required
+def caja():
+    # Parámetros de filtro
+    tipo_filtro = request.args.get('tipo', '')
+    fecha_desde = request.args.get('fecha_desde', '')
+    fecha_hasta = request.args.get('fecha_hasta', '')
+    
+    # Construcción de la consulta
+    query = Transaccion.query.order_by(Transaccion.fecha.desc())
+    
+    if tipo_filtro:
+        query = query.filter_by(tipo=tipo_filtro)
+    
+    if fecha_desde:
+        from datetime import datetime as dt
+        fecha_desde_obj = dt.strptime(fecha_desde, '%Y-%m-%d')
+        query = query.filter(Transaccion.fecha >= fecha_desde_obj)
+    
+    if fecha_hasta:
+        from datetime import datetime as dt
+        fecha_hasta_obj = dt.strptime(fecha_hasta, '%Y-%m-%d')
+        # Agregar un día para incluir toda la fecha
+        fecha_hasta_obj = fecha_hasta_obj.replace(hour=23, minute=59, second=59)
+        query = query.filter(Transaccion.fecha <= fecha_hasta_obj)
+    
+    transacciones = query.all()
+    
+    # Cálculos agregados
+    total_monto = sum(t.monto for t in transacciones)
+    total_ganancia_neta = sum((t.ganancia_neta or 0) for t in transacciones)
+    cantidad_transacciones = len(transacciones)
+    
+    # Estadísticas globales (como en index)
+    celulares_en_stock = Celular.query.filter_by(en_stock=True).all()
+    cantidad_celulares = len(celulares_en_stock)
+    inversion_celulares = sum((c.precio_compra or 0) for c in celulares_en_stock)
+    
+    # Dispositivos en stock
+    dispositivos_en_stock = Dispositivo.query.filter_by(en_stock=True).all()
+    cantidad_dispositivos = len(dispositivos_en_stock)
+    inversion_dispositivos = sum((d.precio_compra * d.cantidad or 0) for d in dispositivos_en_stock)
+    
+    # Inversión total (celulares + dispositivos)
+    inversion_total = inversion_celulares + inversion_dispositivos
+    
+    # Ganancia total: suma de montos de todas las ventas (Venta, Venta Retoma, Venta Dispositivo)
+    ganancia = sum(t.monto for t in Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma', 'Venta Dispositivo'])).all())
+    # Ganancia neta acumulada: suma de ganancia_neta de todas las transacciones de venta
+    ventas_todas = Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma', 'Venta Dispositivo'])).all()
+    ganancia_neta_total_acumulada = sum((t.ganancia_neta or 0) for t in ventas_todas)
+    
+    return render_template('caja.html', transacciones=transacciones, tipo_filtro=tipo_filtro, 
+                          fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, 
+                          total_monto=total_monto, total_ganancia_neta=total_ganancia_neta,
+                          cantidad_transacciones=cantidad_transacciones, 
+                          cantidad_celulares=cantidad_celulares, cantidad_dispositivos=cantidad_dispositivos,
+                          inversion_celulares=inversion_celulares, inversion_dispositivos=inversion_dispositivos,
+                          inversion_total=inversion_total,
+                          ganancia=ganancia, ganancia_neta_total_acumulada=ganancia_neta_total_acumulada,
+                          user=current_user)
+
+@app.route('/stock')
+@login_required
+def stock():
+    """Vista general de stock (celulares + dispositivos)"""
+    # Celulares
+    celulares = Celular.query.filter_by(en_stock=True).all()
+    cantidad_celulares = len(celulares)
+    inversion_celulares = sum((c.precio_compra or 0) for c in celulares)
+    
+    # Dispositivos
+    dispositivos_list = Dispositivo.query.filter_by(en_stock=True).all()
+    cantidad_dispositivos = len(dispositivos_list)
+    inversion_dispositivos = sum((d.precio_compra * d.cantidad or 0) for d in dispositivos_list)
+    
+    # Totales
+    total_items = cantidad_celulares + cantidad_dispositivos
+    inversion_total = inversion_celulares + inversion_dispositivos
+    
+    return render_template('stock.html', 
+                          celulares=celulares, dispositivos=dispositivos_list,
+                          cantidad_celulares=cantidad_celulares, cantidad_dispositivos=cantidad_dispositivos,
+                          total_items=total_items,
+                          inversion_celulares=inversion_celulares, inversion_dispositivos=inversion_dispositivos,
+                          inversion_total=inversion_total,
+                          user=current_user)
+
+@app.route('/dispositivos', methods=['GET', 'POST'])
+@login_required
+def dispositivos():
+    form = DispositivoForm()
+    
+    if form.validate_on_submit():
+        try:
+            dispositivo = Dispositivo(
+                tipo=form.tipo.data,
+                marca=form.marca.data,
+                modelo=form.modelo.data,
+                especificaciones=form.especificaciones.data,
+                serial=form.serial.data,
+                precio_compra=limpiar_pesos(form.precio_compra.data),
+                precio_venta=limpiar_pesos(form.precio_venta.data),
+                cantidad=int(form.cantidad.data),
+                estado=form.estado.data,
+                notas=form.notas.data
+            )
+            db.session.add(dispositivo)
+            db.session.commit()
+            flash(f'¡Dispositivo {form.tipo.data} agregado!', 'success')
+            return redirect(url_for('dispositivos'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al guardar: {str(e)}', 'error')
+    
+    # Búsqueda y filtrado
+    search = request.args.get('search', '')
+    tipo_filtro = request.args.get('tipo', '')
+    estado_filtro = request.args.get('estado', '')
+    
+    query = Dispositivo.query.filter_by(en_stock=True)
+    
+    if search:
+        query = query.filter(
+            (Dispositivo.modelo.contains(search)) | 
+            (Dispositivo.marca.contains(search)) | 
+            (Dispositivo.serial.contains(search))
+        )
+    if tipo_filtro:
+        query = query.filter_by(tipo=tipo_filtro)
+    if estado_filtro:
+        query = query.filter_by(estado=estado_filtro)
+    
+    dispositivos_list = query.all()
+    
+    # Estadísticas
+    cantidad_dispositivos = len(dispositivos_list)
+    inversion_dispositivos = sum((d.precio_compra * d.cantidad or 0) for d in dispositivos_list)
+    
+    return render_template('dispositivos.html', form=form, dispositivos=dispositivos_list, 
+                          search=search, tipo_filtro=tipo_filtro, estado_filtro=estado_filtro,
+                          cantidad_dispositivos=cantidad_dispositivos, 
+                          inversion_dispositivos=inversion_dispositivos, user=current_user)
+
+@app.route('/dispositivo/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_dispositivo(id):
+    if current_user.role != 'Admin':
+        flash('Acceso denegado.', 'error')
+        return redirect(url_for('dispositivos'))
+    
+    dispositivo = Dispositivo.query.get_or_404(id)
+    form = DispositivoForm()
+    
+    if form.validate_on_submit():
+        try:
+            dispositivo.tipo = form.tipo.data
+            dispositivo.marca = form.marca.data
+            dispositivo.modelo = form.modelo.data
+            dispositivo.especificaciones = form.especificaciones.data
+            dispositivo.serial = form.serial.data
+            dispositivo.precio_compra = limpiar_pesos(form.precio_compra.data)
+            dispositivo.precio_venta = limpiar_pesos(form.precio_venta.data)
+            dispositivo.cantidad = int(form.cantidad.data)
+            dispositivo.estado = form.estado.data
+            dispositivo.notas = form.notas.data
+            db.session.commit()
+            flash('Dispositivo actualizado.', 'success')
+            return redirect(url_for('dispositivos'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error: {str(e)}', 'error')
+    elif request.method == 'GET':
+        form.tipo.data = dispositivo.tipo
+        form.marca.data = dispositivo.marca
+        form.modelo.data = dispositivo.modelo
+        form.especificaciones.data = dispositivo.especificaciones
+        form.serial.data = dispositivo.serial
+        form.precio_compra.data = dispositivo.precio_compra
+        form.precio_venta.data = dispositivo.precio_venta
+        form.cantidad.data = dispositivo.cantidad
+        form.estado.data = dispositivo.estado
+        form.notas.data = dispositivo.notas
+    
+    return render_template('editar_dispositivo.html', form=form, dispositivo=dispositivo, user=current_user)
+
+@app.route('/dispositivo/eliminar/<int:id>', methods=['POST'])
+@login_required
+def eliminar_dispositivo(id):
+    if current_user.role != 'Admin':
+        flash('Acceso denegado.', 'error')
+        return redirect(url_for('dispositivos'))
+    
+    dispositivo = Dispositivo.query.get_or_404(id)
+    try:
+        db.session.delete(dispositivo)
+        db.session.commit()
+        flash('Dispositivo eliminado.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error: {str(e)}', 'error')
+    
+    return redirect(url_for('dispositivos'))
+
+@app.route('/dispositivo/vender/<int:id>', methods=['POST'])
+@login_required
+def vender_dispositivo(id):
+    dispositivo = Dispositivo.query.get_or_404(id)
+    
+    try:
+        # Calcular ganancia neta
+        precio_venta = dispositivo.precio_venta * dispositivo.cantidad
+        precio_compra = dispositivo.precio_compra * dispositivo.cantidad
+        ganancia_neta = precio_venta - precio_compra
+        
+        # Crear transacción en caja
+        transaccion = Transaccion(
+            tipo='Venta Dispositivo',
+            monto=precio_venta,
+            ganancia_neta=ganancia_neta,
+            descripcion=f"{dispositivo.tipo} {dispositivo.marca} {dispositivo.modelo} (x{dispositivo.cantidad})"
+        )
+        
+        # Marcar dispositivo como vendido
+        dispositivo.estado = 'vendido'
+        dispositivo.en_stock = False
+        
+        db.session.add(transaccion)
+        db.session.commit()
+        
+        flash(f'¡{dispositivo.tipo} vendido! Transacción registrada en caja.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al registrar venta: {str(e)}', 'error')
+    
+    return redirect(url_for('dispositivos'))
+
 @app.route('/', methods=['GET', 'POST'])
 @login_required
 def index():
@@ -293,13 +581,19 @@ def index():
 
     # Búsqueda segura (siempre retorna lista)
     search = request.args.get('search', '')
+    estado_filtro = request.args.get('estado', '')
     query = Celular.query.filter_by(en_stock=True)
     if search:
         query = query.filter((Celular.modelo.contains(search)) | (Celular.imei1.contains(search)) | (Celular.imei2.contains(search)))
+    if estado_filtro:
+        query = query.filter_by(estado=estado_filtro)
     celulares = query.all()
     terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.local, Tercero.nombre).all()
 
-    transacciones = Transaccion.query.order_by(Transaccion.fecha.desc()).limit(5).all()
+    # Contar celulares en servicio técnico
+    servicio_tecnico_count = Celular.query.filter_by(en_stock=True, estado='Servicio Técnico').count()
+
+    transacciones = Transaccion.query.order_by(Transaccion.fecha.desc()).limit(50).all()
     # Ganancia total: suma de montos de todas las ventas (Venta y Venta Retoma)
     ganancia = sum(t.monto for t in Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma'])).all())
     # Ganancia neta acumulada: suma de ganancia_neta de todas las transacciones de venta (incluye Venta y Venta Retoma)
@@ -307,7 +601,7 @@ def index():
     ganancia_neta_total = sum((t.ganancia_neta or 0) for t in ventas_todas)
     # Inversión total: suma de precio_compra de todos los celulares en stock
     inversion_total = sum((c.precio_compra or 0) for c in celulares)
-    return render_template('index.html', form=form, celulares=celulares, terceros=terceros, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, user=current_user)
+    return render_template('index.html', form=form, celulares=celulares, terceros=terceros, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, estado_filtro=estado_filtro, servicio_tecnico_count=servicio_tecnico_count, user=current_user)
 
 # CRUD: Editar, Eliminar (igual, con check rol)
 @app.route('/editar/<int:id>', methods=['GET', 'POST'])
