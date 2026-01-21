@@ -107,7 +107,9 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Tipo <span class="text-danger">*</span></label>
-                            {{ form.tipo(class="form-select") }}
+                            {{ form.tipo(class="form-select", id="tipo-select") }}
+                            <input type="text" class="form-control mt-2" id="tipo-otro" name="tipo_otro" placeholder="Describe el tipo" style="display:none;" value="{{ form.tipo_otro.data or '' }}">
+                            <div class="form-text">Si eliges "Otro", escribe el tipo aquí.</div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Marca <span class="text-danger">*</span></label>
@@ -228,6 +230,25 @@
 </div>
 
 <script>
+    // Mostrar campo "Otro" cuando corresponde
+    const tipoSelect = document.getElementById('tipo-select');
+    const tipoOtro = document.getElementById('tipo-otro');
+    function toggleTipoOtro() {
+        if (!tipoSelect || !tipoOtro) return;
+        if (tipoSelect.value === 'Otro') {
+            tipoOtro.style.display = 'block';
+            tipoOtro.required = true;
+        } else {
+            tipoOtro.style.display = 'none';
+            tipoOtro.required = false;
+            tipoOtro.value = '';
+        }
+    }
+    if (tipoSelect) {
+        tipoSelect.addEventListener('change', toggleTipoOtro);
+        toggleTipoOtro();
+    }
+
     // Función para formatear precio como pesos colombianos
     function formatearPesos(valor) {
         if (!valor) return '';

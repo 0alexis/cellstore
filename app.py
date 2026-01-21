@@ -122,6 +122,7 @@ class Celular(db.Model):
     imei1 = db.Column(db.String(20), unique=True, nullable=False)
     imei2 = db.Column(db.String(20), nullable=True)
     modelo = db.Column(db.String(50), nullable=False)
+    color = db.Column(db.String(30), nullable=True)
     gb = db.Column(db.String(10), nullable=False)
     precio_compra = db.Column(db.Float, default=0.0)
     precio_cliente = db.Column(db.Float, default=0.0)
@@ -191,6 +192,7 @@ class CelularForm(FlaskForm):
     imei1 = StringField('IMEI 1', validators=[DataRequired()])
     imei2 = StringField('IMEI 2')
     modelo = StringField('Modelo', validators=[DataRequired()])
+    color = StringField('Color')
     gb = SelectField('GB', choices=[('64', '64GB'), ('128', '128GB'), ('256', '256GB'), ('512', '512GB'), ('1TB', '1TB')], validators=[DataRequired()])
     precio_compra = StringField('Precio Compra', validators=[DataRequired()])
     precio_cliente = StringField('Precio Cliente', validators=[DataRequired()])
@@ -215,6 +217,7 @@ class DispositivoForm(FlaskForm):
         ('Router', 'Router'),
         ('Otro', 'Otro')
     ], validators=[DataRequired()])
+    tipo_otro = StringField('Otro tipo (personalizado)')
     marca = StringField('Marca', validators=[DataRequired()])
     modelo = StringField('Modelo', validators=[DataRequired()])
     especificaciones = TextAreaField('Especificaciones (RAM, Almacenamiento, Procesador, etc.)')
@@ -262,6 +265,11 @@ with app.app_context():
                 print("Migrando tabla celular: agregando columna patinado_en...")
                 with db.engine.connect() as conn:
                     conn.execute(text('ALTER TABLE celular ADD COLUMN patinado_en DATETIME NULL'))
+                    conn.commit()
+            if 'color' not in columnas_celular:
+                print("Migrando tabla celular: agregando columna color...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE celular ADD COLUMN color VARCHAR(30) NULL'))
                     conn.commit()
         except Exception as mig_e:
             print(f"Nota migración celular: {mig_e}")
@@ -402,9 +410,13 @@ def dispositivos():
     form = DispositivoForm()
     
     if form.validate_on_submit():
+        if form.tipo.data == 'Otro' and not (form.tipo_otro.data and form.tipo_otro.data.strip()):
+            flash('Especifica el tipo cuando seleccionas "Otro".', 'error')
+            return redirect(url_for('dispositivos'))
         try:
+            tipo_val = form.tipo_otro.data.strip() if form.tipo.data == 'Otro' and form.tipo_otro.data else form.tipo.data
             dispositivo = Dispositivo(
-                tipo=form.tipo.data,
+                tipo=tipo_val,
                 marca=form.marca.data,
                 modelo=form.modelo.data,
                 especificaciones=form.especificaciones.data,
@@ -417,7 +429,7 @@ def dispositivos():
             )
             db.session.add(dispositivo)
             db.session.commit()
-            flash(f'¡Dispositivo {form.tipo.data} agregado!', 'success')
+            flash(f'¡Dispositivo {tipo_val} agregado!', 'success')
             return redirect(url_for('dispositivos'))
         except Exception as e:
             db.session.rollback()
@@ -463,8 +475,12 @@ def editar_dispositivo(id):
     form = DispositivoForm()
     
     if form.validate_on_submit():
+        if form.tipo.data == 'Otro' and not (form.tipo_otro.data and form.tipo_otro.data.strip()):
+            flash('Especifica el tipo cuando seleccionas "Otro".', 'error')
+            return redirect(url_for('editar_dispositivo', id=id))
         try:
-            dispositivo.tipo = form.tipo.data
+            tipo_val = form.tipo_otro.data.strip() if form.tipo.data == 'Otro' and form.tipo_otro.data else form.tipo.data
+            dispositivo.tipo = tipo_val
             dispositivo.marca = form.marca.data
             dispositivo.modelo = form.modelo.data
             dispositivo.especificaciones = form.especificaciones.data
@@ -481,7 +497,13 @@ def editar_dispositivo(id):
             db.session.rollback()
             flash(f'Error: {str(e)}', 'error')
     elif request.method == 'GET':
-        form.tipo.data = dispositivo.tipo
+        tipos_validos = {choice[0] for choice in DispositivoForm.tipo.choices}
+        if dispositivo.tipo in tipos_validos:
+            form.tipo.data = dispositivo.tipo
+            form.tipo_otro.data = ''
+        else:
+            form.tipo.data = 'Otro'
+            form.tipo_otro.data = dispositivo.tipo
         form.marca.data = dispositivo.marca
         form.modelo.data = dispositivo.modelo
         form.especificaciones.data = dispositivo.especificaciones
@@ -561,6 +583,7 @@ def index():
                 imei1=form.imei1.data,
                 imei2=form.imei2.data if form.imei2.data else None,
                 modelo=form.modelo.data, 
+                color=form.color.data,
                 gb=form.gb.data,
                 precio_compra=limpiar_pesos(form.precio_compra.data),
                 precio_cliente=limpiar_pesos(form.precio_cliente.data), 
@@ -621,6 +644,7 @@ def editar(id):
             'imei1': celular.imei1,
             'imei2': celular.imei2,
             'modelo': celular.modelo,
+            'color': celular.color,
             'gb': celular.gb,
             'precio_compra': celular.precio_compra,
             'precio_cliente': celular.precio_cliente,
@@ -636,6 +660,7 @@ def editar(id):
             celular.imei1 = form.imei1.data
             celular.imei2 = form.imei2.data
             celular.modelo = form.modelo.data
+            celular.color = form.color.data
             celular.gb = form.gb.data
             celular.precio_compra = limpiar_pesos(form.precio_compra.data)
             celular.precio_cliente = limpiar_pesos(form.precio_cliente.data)
@@ -699,7 +724,7 @@ def retoma():
     celular_id = request.form['celular_id']  # ID del celular nuevo (venta)
     imei_recibido = request.form['imei_recibido']
     valor_estimado = limpiar_pesos(request.form['valor_estimado'])
-    cash_recibido = limpiar_pesos(request.form['cash_recibido'])
+    cash_recibido = int(limpiar_pesos(request.form['cash_recibido']))
     total_venta = float(request.form['total_venta'])
     saldo_pendiente = total_venta - cash_recibido - valor_estimado  # Saldo después de retoma + cash
 

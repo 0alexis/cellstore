@@ -24,7 +24,9 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Tipo <span class="text-danger">*</span></label>
-                            {{ form.tipo(class="form-select") }}
+                            {{ form.tipo(class="form-select", id="tipo-select-edit") }}
+                            <input type="text" class="form-control mt-2" id="tipo-otro-edit" name="tipo_otro" placeholder="Describe el tipo" style="display:none;" value="{{ form.tipo_otro.data or '' }}">
+                            <div class="form-text">Si eliges "Otro", escribe el tipo aquí.</div>
                             {% if form.tipo.errors %}
                                 <div class="text-danger small mt-1">{{ form.tipo.errors[0] }}</div>
                             {% endif %}
@@ -107,6 +109,25 @@
 </div>
 
 <script>
+    // Mostrar campo "Otro" en edición
+    const tipoSelectEdit = document.getElementById('tipo-select-edit');
+    const tipoOtroEdit = document.getElementById('tipo-otro-edit');
+    function toggleTipoOtroEdit() {
+        if (!tipoSelectEdit || !tipoOtroEdit) return;
+        if (tipoSelectEdit.value === 'Otro') {
+            tipoOtroEdit.style.display = 'block';
+            tipoOtroEdit.required = true;
+        } else {
+            tipoOtroEdit.style.display = 'none';
+            tipoOtroEdit.required = false;
+            tipoOtroEdit.value = '';
+        }
+    }
+    if (tipoSelectEdit) {
+        tipoSelectEdit.addEventListener('change', toggleTipoOtroEdit);
+        toggleTipoOtroEdit();
+    }
+
     // Función para formatear precio como pesos colombianos
     function formatearPesos(valor) {
         if (!valor) return '';
