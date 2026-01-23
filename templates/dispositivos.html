@@ -64,7 +64,7 @@
     <div class="col-12">
         <form method="GET" class="d-flex gap-2 flex-wrap">
             <input type="text" name="search" class="form-control" placeholder="Buscar por modelo, marca o serial" value="{{ search }}" style="flex: 1; min-width: 200px;">
-            <select name="tipo" class="form-select" style="max-width: 180px;">
+            <select name="tipo" class="form-select" style="max-width: 150px;">
                 <option value="">Todos los tipos</option>
                 <option value="PC" {% if tipo_filtro == 'PC' %}selected{% endif %}>PC</option>
                 <option value="Laptop" {% if tipo_filtro == 'Laptop' %}selected{% endif %}>Laptop</option>
@@ -73,15 +73,21 @@
                 <option value="Cámara" {% if tipo_filtro == 'Cámara' %}selected{% endif %}>Cámara</option>
                 <option value="Monitor" {% if tipo_filtro == 'Monitor' %}selected{% endif %}>Monitor</option>
             </select>
-            <select name="estado" class="form-select" style="max-width: 180px;">
+            <select name="estado" class="form-select" style="max-width: 150px;">
                 <option value="">Todos los estados</option>
-                <option value="disponible" {% if estado_filtro == 'disponible' %}selected{% endif %}>Disponible</option>
-                <option value="vendido" {% if estado_filtro == 'vendido' %}selected{% endif %}>Vendido</option>
-                <option value="dañado" {% if estado_filtro == 'dañado' %}selected{% endif %}>Dañado</option>
-                <option value="servicio" {% if estado_filtro == 'servicio' %}selected{% endif %}>En Servicio</option>
+                <option value="local" {% if estado_filtro == 'local' %}selected{% endif %}>Local</option>
+                <option value="Patinado" {% if estado_filtro == 'Patinado' %}selected{% endif %}>Patinado</option>
+                <option value="Vendido" {% if estado_filtro == 'Vendido' %}selected{% endif %}>Vendido</option>
+                <option value="Servicio Técnico" {% if estado_filtro == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
+            </select>
+            <select name="orden" class="form-select" style="max-width: 150px;">
+                <option value="ultimos" {% if orden == 'ultimos' %}selected{% endif %}>Últimos</option>
+                <option value="primeros" {% if orden == 'primeros' %}selected{% endif %}>Primeros</option>
+                <option value="marca" {% if orden == 'marca' %}selected{% endif %}>Por Marca</option>
+                <option value="tipo" {% if orden == 'tipo' %}selected{% endif %}>Por Tipo</option>
             </select>
             <button type="submit" class="btn btn-outline-secondary">Filtrar</button>
-            {% if search or tipo_filtro or estado_filtro %}
+            {% if search or tipo_filtro or estado_filtro or orden != 'ultimos' %}
                 <a href="{{ url_for('dispositivos') }}" class="btn btn-outline-danger">Limpiar</a>
             {% endif %}
         </form>
@@ -192,23 +198,40 @@
                     <td><strong>{{ d.precio_compra|pesos }}</strong></td>
                     <td><strong>{{ d.precio_venta|pesos }}</strong></td>
                     <td>
-                        <span class="badge bg-{% if d.estado == 'disponible' %}success{% elif d.estado == 'vendido' %}danger{% elif d.estado == 'dañado' %}warning{% else %}secondary{% endif %}">
-                            {{ d.estado }}
-                        </span>
+                        <form method="POST" action="{{ url_for('cambiar_estado_dispositivo', id=d.id) }}" style="display: inline;">
+                            <select class="form-select form-select-sm estado-select
+                                {% if d.estado == 'Patinado' %}bg-danger text-white
+                                {% elif d.estado == 'local' %}bg-secondary text-white
+                                {% elif d.estado == 'Vendido' %}bg-success text-white
+                                {% elif d.estado == 'Servicio Técnico' %}bg-warning text-dark
+                                {% endif %}" 
+                                name="nuevo_estado" onchange="handleEstadoChange(this);">
+                                <option value="local" class="bg-secondary text-white" {% if d.estado == 'local' %}selected{% endif %}>Local</option>
+                                <option value="Patinado" class="bg-danger text-white" {% if d.estado == 'Patinado' %}selected{% endif %}>Patinado</option>
+                                <option value="Vendido" class="bg-success text-white" {% if d.estado == 'Vendido' %}selected{% endif %}>Vendido</option>
+                                <option value="Servicio Técnico" class="bg-warning text-dark" {% if d.estado == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
+                            </select>
+                            <select class="form-select form-select-sm mt-1 tercero-selector" name="tercero_id" {% if d.estado != 'Patinado' %}style="display:none"{% endif %}>
+                                <option value="">Selecciona tercero</option>
+                                {% for t in terceros %}
+                                    <option value="{{ t.id }}" {% if d.tercero_id == t.id %}selected{% endif %}>{{ t.local }} - {{ t.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
                     </td>
                     <td>
                         <div class="btn-group btn-group-sm" role="group">
-                            {% if d.estado != 'vendido' %}
+                            {% if d.estado != 'Vendido' %}
                                 <form method="POST" action="{{ url_for('vender_dispositivo', id=d.id) }}" style="display: inline;">
-                                    <button type="submit" class="btn btn-success" onclick="return confirm('¿Confirmar venta de este dispositivo?')">✅ Vender</button>
+                                    <button type="submit" class="btn btn-outline-success">Vendido</button>
                                 </form>
                             {% else %}
                                 <span class="badge bg-success">Vendido</span>
                             {% endif %}
+                            <a href="{{ url_for('editar_dispositivo', id=d.id) }}" class="btn btn-outline-warning">Editar</a>
                             {% if user.role == 'Admin' %}
-                                <a href="{{ url_for('editar_dispositivo', id=d.id) }}" class="btn btn-outline-warning">✏️ Editar</a>
                                 <form method="POST" action="{{ url_for('eliminar_dispositivo', id=d.id) }}" style="display: inline;">
-                                    <button type="submit" class="btn btn-outline-danger" onclick="return confirm('¿Eliminar este dispositivo?')">🗑️ Eliminar</button>
+                                    <button type="submit" class="btn btn-outline-danger" onclick="return confirm('¿Eliminar este dispositivo?')">Eliminar</button>
                                 </form>
                             {% endif %}
                         </div>
@@ -282,5 +305,42 @@
             }
         });
     });
+
+    // Manejo de estado -> requiere tercero cuando es patinado
+    function toggleTerceroSelect(selectEl) {
+        const form = selectEl.closest('form');
+        const terceroSelect = form ? form.querySelector('.tercero-selector') : null;
+        if (!terceroSelect) return;
+        if (selectEl.value === 'Patinado') {
+            terceroSelect.style.display = 'block';
+        } else {
+            terceroSelect.value = '';
+            terceroSelect.style.display = 'none';
+        }
+    }
+
+    function handleEstadoChange(selectEl) {
+        toggleTerceroSelect(selectEl);
+        const form = selectEl.form;
+        const terceroSelect = form ? form.querySelector('.tercero-selector') : null;
+        if (selectEl.value === 'Patinado') {
+            if (!terceroSelect || !terceroSelect.value) {
+                if (terceroSelect) terceroSelect.focus();
+                return; // No enviamos hasta elegir tercero
+            }
+        }
+        form.submit();
+    }
+
+    document.querySelectorAll('.tercero-selector').forEach(sel => {
+        sel.addEventListener('change', function () {
+            const estadoSelect = this.closest('form').querySelector('.estado-select');
+            if (estadoSelect && estadoSelect.value === 'Patinado' && this.value) {
+                this.form.submit();
+            }
+        });
+    });
+
+    document.querySelectorAll('.estado-select').forEach(toggleTerceroSelect);
 </script>
 {% endblock %}

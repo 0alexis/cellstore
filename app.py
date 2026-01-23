@@ -226,10 +226,10 @@ class DispositivoForm(FlaskForm):
     precio_venta = StringField('Precio Venta', validators=[DataRequired()])
     cantidad = StringField('Cantidad', validators=[DataRequired()], default='1')
     estado = SelectField('Estado', choices=[
-        ('disponible', 'Disponible'),
-        ('vendido', 'Vendido'),
-        ('dañado', 'Dañado'),
-        ('servicio', 'En Servicio')
+        ('local', 'Local'),
+        ('Patinado', 'Patinado'),
+        ('Vendido', 'Vendido'),
+        ('Servicio Técnico', 'Servicio Técnico')
     ], validators=[DataRequired()])
     notas = TextAreaField('Notas')
     submit = SubmitField('Guardar')
@@ -439,6 +439,7 @@ def dispositivos():
     search = request.args.get('search', '')
     tipo_filtro = request.args.get('tipo', '')
     estado_filtro = request.args.get('estado', '')
+    orden = request.args.get('orden', 'ultimos')
     
     query = Dispositivo.query.filter_by(en_stock=True)
     
@@ -453,23 +454,33 @@ def dispositivos():
     if estado_filtro:
         query = query.filter_by(estado=estado_filtro)
     
+    # Ordenamiento
+    if orden == 'ultimos':
+        query = query.order_by(Dispositivo.id.desc())
+    elif orden == 'primeros':
+        query = query.order_by(Dispositivo.id.asc())
+    elif orden == 'marca':
+        query = query.order_by(Dispositivo.marca.asc(), Dispositivo.modelo.asc())
+    elif orden == 'tipo':
+        query = query.order_by(Dispositivo.tipo.asc(), Dispositivo.marca.asc())
+    else:
+        query = query.order_by(Dispositivo.id.desc())
+    
     dispositivos_list = query.all()
     
     # Estadísticas
     cantidad_dispositivos = len(dispositivos_list)
     inversion_dispositivos = sum((d.precio_compra * d.cantidad or 0) for d in dispositivos_list)
     
+    terceros = Tercero.query.filter_by(activo=True).all()
     return render_template('dispositivos.html', form=form, dispositivos=dispositivos_list, 
-                          search=search, tipo_filtro=tipo_filtro, estado_filtro=estado_filtro,
+                          search=search, tipo_filtro=tipo_filtro, estado_filtro=estado_filtro, orden=orden,
                           cantidad_dispositivos=cantidad_dispositivos, 
-                          inversion_dispositivos=inversion_dispositivos, user=current_user)
+                          inversion_dispositivos=inversion_dispositivos, terceros=terceros, user=current_user)
 
 @app.route('/dispositivo/editar/<int:id>', methods=['GET', 'POST'])
 @login_required
 def editar_dispositivo(id):
-    if current_user.role != 'Admin':
-        flash('Acceso denegado.', 'error')
-        return redirect(url_for('dispositivos'))
     
     dispositivo = Dispositivo.query.get_or_404(id)
     form = DispositivoForm()
@@ -516,6 +527,54 @@ def editar_dispositivo(id):
     
     return render_template('editar_dispositivo.html', form=form, dispositivo=dispositivo, user=current_user)
 
+# Cambiar estado de dispositivo (similar a celulares)
+@app.route('/dispositivo/cambiar_estado/<int:id>', methods=['POST'])
+@login_required
+def cambiar_estado_dispositivo(id):
+    if current_user.role != 'Admin':
+        flash('Acceso denegado.', 'error')
+        return redirect(url_for('dispositivos'))
+
+    dispositivo = Dispositivo.query.get_or_404(id)
+    nuevo_estado = request.form.get('nuevo_estado')
+    tercero_id = request.form.get('tercero_id')
+    
+    # Preservar parámetros de filtro
+    search = request.form.get('search', '')
+    tipo_filtro = request.form.get('tipo', '')
+    estado_filtro = request.form.get('estado', '')
+    orden = request.form.get('orden', 'ultimos')
+
+    if nuevo_estado not in ['local', 'Patinado', 'Vendido', 'Servicio Técnico']:
+        flash('Estado inválido.', 'error')
+        return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
+
+    if nuevo_estado == 'Patinado':
+        if not tercero_id:
+            flash('Selecciona a quién se patina el dispositivo.', 'error')
+            return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
+        try:
+            tercero_id_int = int(tercero_id)
+        except ValueError:
+            flash('Tercero inválido.', 'error')
+            return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
+
+        tercero = Tercero.query.filter_by(id=tercero_id_int, activo=True).first()
+        if not tercero:
+            flash('Tercero no encontrado o inactivo.', 'error')
+            return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
+
+        dispositivo.tercero_id = tercero.id
+    else:
+        dispositivo.tercero_id = None
+
+    dispositivo.estado = nuevo_estado
+    # Gestionar en_stock: Vendido -> False; otros -> True
+    dispositivo.en_stock = (nuevo_estado != 'Vendido')
+    db.session.commit()
+    flash(f'¡Cambio de estado exitoso! {dispositivo.tipo} {dispositivo.modelo} ahora es {nuevo_estado}.', 'success')
+    return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
+
 @app.route('/dispositivo/eliminar/<int:id>', methods=['POST'])
 @login_required
 def eliminar_dispositivo(id):
@@ -524,6 +583,12 @@ def eliminar_dispositivo(id):
         return redirect(url_for('dispositivos'))
     
     dispositivo = Dispositivo.query.get_or_404(id)
+    
+    # Preservar parámetros de filtro
+    search = request.form.get('search', '')
+    tipo_filtro = request.form.get('tipo', '')
+    estado_filtro = request.form.get('estado', '')
+    orden = request.form.get('orden', 'ultimos')
     try:
         db.session.delete(dispositivo)
         db.session.commit()
@@ -532,7 +597,7 @@ def eliminar_dispositivo(id):
         db.session.rollback()
         flash(f'Error: {str(e)}', 'error')
     
-    return redirect(url_for('dispositivos'))
+    return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
 
 @app.route('/dispositivo/vender/<int:id>', methods=['POST'])
 @login_required
@@ -554,7 +619,7 @@ def vender_dispositivo(id):
         )
         
         # Marcar dispositivo como vendido
-        dispositivo.estado = 'vendido'
+        dispositivo.estado = 'Vendido'
         dispositivo.en_stock = False
         
         db.session.add(transaccion)
@@ -565,7 +630,7 @@ def vender_dispositivo(id):
         db.session.rollback()
         flash(f'Error al registrar venta: {str(e)}', 'error')
     
-    return redirect(url_for('dispositivos'))
+    return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
 
 @app.route('/', methods=['GET', 'POST'])
 @login_required
@@ -605,11 +670,25 @@ def index():
     # Búsqueda segura (siempre retorna lista)
     search = request.args.get('search', '')
     estado_filtro = request.args.get('estado', '')
+    orden = request.args.get('orden', 'ultimos')
     query = Celular.query.filter_by(en_stock=True)
     if search:
         query = query.filter((Celular.modelo.contains(search)) | (Celular.imei1.contains(search)) | (Celular.imei2.contains(search)))
     if estado_filtro:
         query = query.filter_by(estado=estado_filtro)
+    
+    # Ordenamiento
+    if orden == 'ultimos':
+        query = query.order_by(Celular.id.desc())
+    elif orden == 'primeros':
+        query = query.order_by(Celular.id.asc())
+    elif orden == 'modelo':
+        query = query.order_by(Celular.modelo.asc())
+    elif orden == 'estado':
+        query = query.order_by(Celular.estado.asc(), Celular.modelo.asc())
+    else:
+        query = query.order_by(Celular.id.desc())
+    
     celulares = query.all()
     terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.local, Tercero.nombre).all()
 
@@ -624,7 +703,7 @@ def index():
     ganancia_neta_total = sum((t.ganancia_neta or 0) for t in ventas_todas)
     # Inversión total: suma de precio_compra de todos los celulares en stock
     inversion_total = sum((c.precio_compra or 0) for c in celulares)
-    return render_template('index.html', form=form, celulares=celulares, terceros=terceros, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, estado_filtro=estado_filtro, servicio_tecnico_count=servicio_tecnico_count, user=current_user)
+    return render_template('index.html', form=form, celulares=celulares, terceros=terceros, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, estado_filtro=estado_filtro, orden=orden, servicio_tecnico_count=servicio_tecnico_count, user=current_user)
 
 # CRUD: Editar, Eliminar (igual, con check rol)
 @app.route('/editar/<int:id>', methods=['GET', 'POST'])
@@ -722,10 +801,10 @@ def vender(id):
 @login_required
 def retoma():
     celular_id = request.form['celular_id']  # ID del celular nuevo (venta)
-    imei_recibido = request.form['imei_recibido']
-    valor_estimado = limpiar_pesos(request.form['valor_estimado'])
-    cash_recibido = int(limpiar_pesos(request.form['cash_recibido']))
-    total_venta = float(request.form['total_venta'])
+    recibido_tipo = request.form.get('recibido_tipo', 'celular')
+    valor_estimado = limpiar_pesos(request.form.get('valor_estimado', 0))
+    cash_recibido = int(limpiar_pesos(request.form.get('cash_recibido', 0)))
+    total_venta = float(request.form.get('total_venta', 0))
     saldo_pendiente = total_venta - cash_recibido - valor_estimado  # Saldo después de retoma + cash
 
     # Actualiza celular nuevo como vendido a precio de cliente
@@ -734,18 +813,55 @@ def retoma():
     celular.en_stock = False
     db.session.commit()
 
-    # Agrega teléfono retomado a stock
-    retoma_cel = Celular(
-        imei1=imei_recibido,
-        modelo=request.form['modelo_recibido'],
-        gb=request.form['gb_recibido'],
-        precio_compra=valor_estimado,  # Compra al valor estimado
-        precio_cliente=valor_estimado * 1.2,  # Margen para revender
-        estado='Retoma',  # Estado especial
-        notas=f'Recibido por plan retoma - Saldo: ${saldo_pendiente if saldo_pendiente > 0 else 0}'
-    )
-    db.session.add(retoma_cel)
-    db.session.commit()
+    descripcion_trans = ''
+
+    if recibido_tipo == 'dispositivo':
+        # Crear Dispositivo en inventario
+        dispo_tipo = request.form.get('dispo_tipo', 'Otro')
+        dispo_marca = request.form.get('dispo_marca', 'N/A')
+        dispo_modelo = request.form.get('dispo_modelo', 'N/A')
+        dispo_serial = request.form.get('dispo_serial')
+        try:
+            dispo_cantidad = int(request.form.get('dispo_cantidad', '1') or '1')
+        except ValueError:
+            dispo_cantidad = 1
+        dispo_notas = request.form.get('dispo_notas')
+
+        dispositivo = Dispositivo(
+            tipo=dispo_tipo,
+            marca=dispo_marca,
+            modelo=dispo_modelo,
+            especificaciones=None,
+            serial=dispo_serial,
+            precio_compra=valor_estimado,
+            precio_venta=valor_estimado * 1.2,
+            estado='disponible',
+            cantidad=dispo_cantidad,
+            notas=dispo_notas,
+            en_stock=True
+        )
+        db.session.add(dispositivo)
+        db.session.commit()
+
+        descripcion_trans = f'Retoma Dispositivo {dispo_tipo} {dispo_marca} {dispo_modelo} por {celular.modelo} IMEI1 {celular.imei1} + cash ${cash_recibido}'
+    else:
+        # Agrega teléfono retomado a stock
+        imei_recibido = request.form.get('imei_recibido')
+        modelo_recibido = request.form.get('modelo_recibido')
+        gb_recibido = request.form.get('gb_recibido')
+        retoma_cel = Celular(
+            imei1=imei_recibido,
+            modelo=modelo_recibido,
+            gb=gb_recibido,
+            precio_compra=valor_estimado,  # Compra al valor estimado
+            precio_cliente=valor_estimado * 1.2,  # Margen para revender
+            estado='local',  # Estado en stock
+            notas=f'Recibido por plan retoma - Saldo: ${saldo_pendiente if saldo_pendiente > 0 else 0}'
+        )
+        db.session.add(retoma_cel)
+        db.session.commit()
+
+        descripcion_trans = f'Retoma {imei_recibido} por {celular.modelo} IMEI1 {celular.imei1} + cash ${cash_recibido}'
 
     # Registra transacción de venta retoma
     # Monto: total de la venta (precio de cliente)
@@ -755,7 +871,7 @@ def retoma():
         tipo='Venta Retoma',
         monto=total_venta,  # Monto total de la venta
         ganancia_neta=ganancia_neta_retoma,  # Ganancia real: (cash + retoma) - precio compra
-        descripcion=f'Retoma {imei_recibido} por {celular.modelo} IMEI1 {celular.imei1} + cash ${cash_recibido}'
+        descripcion=descripcion_trans
     )
     db.session.add(trans)
     db.session.commit()
@@ -763,10 +879,10 @@ def retoma():
     # Si saldo >0, crea deuda
     if saldo_pendiente > 0:
         deuda = Deuda(
-            cliente_nombre=request.form['cliente_nombre'],
+            cliente_nombre=request.form.get('cliente_nombre', 'Cliente'),
             monto_pendiente=saldo_pendiente,
             fecha_vencida=obtener_fecha_bogota().date() + timedelta(days=30),
-            notas=f'Saldo por retoma {imei_recibido}'
+            notas='Saldo por retoma'
         )
         db.session.add(deuda)
         db.session.commit()
