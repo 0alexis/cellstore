@@ -502,102 +502,201 @@
                                 <input type="hidden" name="celular_id" value="{{ cel.id }}">
                                 <input type="hidden" name="total_venta" value="{{ cel.precio_cliente }}">
                                 <div class="modal-body">
-                                    <h6 class="mb-2">Artículo Recibido</h6>
-                                    <div class="row mb-3">
-                                        <div class="col-md-6">
-                                            <label class="form-label">Tipo recibido</label>
-                                            <select name="recibido_tipo" id="recibido_tipo_{{ cel.id }}" class="form-select form-select-sm" onchange="toggleRetomaTipo('{{ cel.id }}')">
-                                                <option value="celular" selected>Celular</option>
-                                                <option value="dispositivo">Dispositivo</option>
-                                            </select>
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="mb-0">Ítems recibidos</h6>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="addRetomaItem('{{ cel.id }}')">Agregar ítem</button>
+                                    </div>
+
+                                    <div class="retoma-items" id="retoma_items_{{ cel.id }}">
+                                        <div class="retoma-item border rounded p-2 mb-3">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <div class="flex-grow-1 pe-2">
+                                                    <label class="form-label mb-1">Tipo recibido</label>
+                                                    <select name="recibido_tipo[]" class="form-select form-select-sm" onchange="toggleItemType(this)">
+                                                        <option value="celular" selected>Celular</option>
+                                                        <option value="dispositivo">Dispositivo</option>
+                                                    </select>
+                                                </div>
+                                                <button type="button" class="btn btn-sm btn-outline-danger btn-remove-item" onclick="removeRetomaItem(this)" style="display:none;">Quitar</button>
+                                            </div>
+
+                                            <div class="retoma-celular">
+                                                <div class="row">
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">IMEI Recibido</label>
+                                                        <input type="text" name="imei_recibido[]" class="form-control" placeholder="Ej: 123456789012345">
+                                                    </div>
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">Modelo Recibido</label>
+                                                        <input type="text" name="modelo_recibido[]" class="form-control" placeholder="Ej: iPhone 11">
+                                                    </div>
+                                                </div>
+                                                <div class="row">
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">GB Recibido</label>
+                                                        <select name="gb_recibido[]" class="form-select">
+                                                            <option value="">Selecciona</option>
+                                                            <option value="64">64GB</option>
+                                                            <option value="128">128GB</option>
+                                                            <option value="256">256GB</option>
+                                                            <option value="512">512GB</option>
+                                                            <option value="1TB">1TB</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="retoma-dispositivo" style="display:none;">
+                                                <div class="row">
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Tipo</label>
+                                                        <select name="dispo_tipo[]" class="form-select">
+                                                            <option value="PC">PC</option>
+                                                            <option value="Laptop">Laptop</option>
+                                                            <option value="Tablet">Tablet</option>
+                                                            <option value="iPad">iPad</option>
+                                                            <option value="Cámara">Cámara</option>
+                                                            <option value="Monitor">Monitor</option>
+                                                            <option value="Teclado">Teclado</option>
+                                                            <option value="Mouse">Mouse</option>
+                                                            <option value="Auriculares">Auriculares</option>
+                                                            <option value="Smartwatch">Smartwatch</option>
+                                                            <option value="Impresora">Impresora</option>
+                                                            <option value="Router">Router</option>
+                                                            <option value="Otro">Otro</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Marca</label>
+                                                        <input type="text" name="dispo_marca[]" class="form-control" placeholder="Ej: HP, Samsung">
+                                                    </div>
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Modelo</label>
+                                                        <input type="text" name="dispo_modelo[]" class="form-control" placeholder="Ej: Elitebook 840">
+                                                    </div>
+                                                </div>
+                                                <div class="row">
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Serial/Código</label>
+                                                        <input type="text" name="dispo_serial[]" class="form-control" placeholder="Opcional">
+                                                    </div>
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Cantidad</label>
+                                                        <input type="number" name="dispo_cantidad[]" class="form-control" value="1" min="1">
+                                                    </div>
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Notas</label>
+                                                        <input type="text" name="dispo_notas[]" class="form-control" placeholder="Estado, accesorios, etc.">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Valor Estimado</label>
+                                                    <input type="text" name="valor_estimado[]" class="form-control" placeholder="Ej: 720000" required>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <!-- Campos Celular recibido -->
-                                    <div id="retoma_celular_fields_{{ cel.id }}">
-                                        <h6>Datos del Teléfono Recibido</h6>
-                                        <div class="row">
-                                            <div class="col-md-6 mb-3">
-                                                <label class="form-label">IMEI Recibido</label>
-                                                <input type="text" name="imei_recibido" class="form-control" placeholder="Ej: 123456789012345" required>
+                                    <template id="retoma_tpl_{{ cel.id }}">
+                                        <div class="retoma-item border rounded p-2 mb-3">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <div class="flex-grow-1 pe-2">
+                                                    <label class="form-label mb-1">Tipo recibido</label>
+                                                    <select name="recibido_tipo[]" class="form-select form-select-sm" onchange="toggleItemType(this)">
+                                                        <option value="celular" selected>Celular</option>
+                                                        <option value="dispositivo">Dispositivo</option>
+                                                    </select>
+                                                </div>
+                                                <button type="button" class="btn btn-sm btn-outline-danger btn-remove-item" onclick="removeRetomaItem(this)">Quitar</button>
                                             </div>
-                                            <div class="col-md-6 mb-3">
-                                                <label class="form-label">Modelo Recibido</label>
-                                                <input type="text" name="modelo_recibido" class="form-control" placeholder="Ej: iPhone 11" required>
-                                            </div>
-                                        </div>
-                                        <div class="row">
-                                            <div class="col-md-6 mb-3">
-                                                <label class="form-label">GB Recibido</label>
-                                                <select name="gb_recibido" class="form-select" required>
-                                                    <option value="">Selecciona</option>
-                                                    <option value="64">64GB</option>
-                                                    <option value="128">128GB</option>
-                                                    <option value="256">256GB</option>
-                                                    <option value="512">512GB</option>
-                                                    <option value="1TB">1TB</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
 
-                                    <!-- Campos Dispositivo recibido -->
-                                    <div id="retoma_dispositivo_fields_{{ cel.id }}" style="display:none;">
-                                        <h6>Datos del Dispositivo Recibido</h6>
-                                        <div class="row">
-                                            <div class="col-md-4 mb-3">
-                                                <label class="form-label">Tipo</label>
-                                                <select name="dispo_tipo" class="form-select">
-                                                    <option value="PC">PC</option>
-                                                    <option value="Laptop">Laptop</option>
-                                                    <option value="Tablet">Tablet</option>
-                                                    <option value="iPad">iPad</option>
-                                                    <option value="Cámara">Cámara</option>
-                                                    <option value="Monitor">Monitor</option>
-                                                    <option value="Teclado">Teclado</option>
-                                                    <option value="Mouse">Mouse</option>
-                                                    <option value="Auriculares">Auriculares</option>
-                                                    <option value="Smartwatch">Smartwatch</option>
-                                                    <option value="Impresora">Impresora</option>
-                                                    <option value="Router">Router</option>
-                                                    <option value="Otro">Otro</option>
-                                                </select>
+                                            <div class="retoma-celular">
+                                                <div class="row">
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">IMEI Recibido</label>
+                                                        <input type="text" name="imei_recibido[]" class="form-control" placeholder="Ej: 123456789012345">
+                                                    </div>
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">Modelo Recibido</label>
+                                                        <input type="text" name="modelo_recibido[]" class="form-control" placeholder="Ej: iPhone 11">
+                                                    </div>
+                                                </div>
+                                                <div class="row">
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">GB Recibido</label>
+                                                        <select name="gb_recibido[]" class="form-select">
+                                                            <option value="">Selecciona</option>
+                                                            <option value="64">64GB</option>
+                                                            <option value="128">128GB</option>
+                                                            <option value="256">256GB</option>
+                                                            <option value="512">512GB</option>
+                                                            <option value="1TB">1TB</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div class="col-md-4 mb-3">
-                                                <label class="form-label">Marca</label>
-                                                <input type="text" name="dispo_marca" class="form-control" placeholder="Ej: HP, Samsung">
-                                            </div>
-                                            <div class="col-md-4 mb-3">
-                                                <label class="form-label">Modelo</label>
-                                                <input type="text" name="dispo_modelo" class="form-control" placeholder="Ej: Elitebook 840">
-                                            </div>
-                                        </div>
-                                        <div class="row">
-                                            <div class="col-md-4 mb-3">
-                                                <label class="form-label">Serial/Código</label>
-                                                <input type="text" name="dispo_serial" class="form-control" placeholder="Opcional">
-                                            </div>
-                                            <div class="col-md-4 mb-3">
-                                                <label class="form-label">Cantidad</label>
-                                                <input type="number" name="dispo_cantidad" class="form-control" value="1" min="1">
-                                            </div>
-                                            <div class="col-md-4 mb-3">
-                                                <label class="form-label">Notas</label>
-                                                <input type="text" name="dispo_notas" class="form-control" placeholder="Estado, accesorios, etc.">
-                                            </div>
-                                        </div>
-                                    </div>
 
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Valor Estimado Recibido</label>
-                                            <input type="text" name="valor_estimado" class="form-control" placeholder="Ej: 720000" required>
+                                            <div class="retoma-dispositivo" style="display:none;">
+                                                <div class="row">
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Tipo</label>
+                                                        <select name="dispo_tipo[]" class="form-select">
+                                                            <option value="PC">PC</option>
+                                                            <option value="Laptop">Laptop</option>
+                                                            <option value="Tablet">Tablet</option>
+                                                            <option value="iPad">iPad</option>
+                                                            <option value="Cámara">Cámara</option>
+                                                            <option value="Monitor">Monitor</option>
+                                                            <option value="Teclado">Teclado</option>
+                                                            <option value="Mouse">Mouse</option>
+                                                            <option value="Auriculares">Auriculares</option>
+                                                            <option value="Smartwatch">Smartwatch</option>
+                                                            <option value="Impresora">Impresora</option>
+                                                            <option value="Router">Router</option>
+                                                            <option value="Otro">Otro</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Marca</label>
+                                                        <input type="text" name="dispo_marca[]" class="form-control" placeholder="Ej: HP, Samsung">
+                                                    </div>
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Modelo</label>
+                                                        <input type="text" name="dispo_modelo[]" class="form-control" placeholder="Ej: Elitebook 840">
+                                                    </div>
+                                                </div>
+                                                <div class="row">
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Serial/Código</label>
+                                                        <input type="text" name="dispo_serial[]" class="form-control" placeholder="Opcional">
+                                                    </div>
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Cantidad</label>
+                                                        <input type="number" name="dispo_cantidad[]" class="form-control" value="1" min="1">
+                                                    </div>
+                                                    <div class="col-md-4 mb-3">
+                                                        <label class="form-label">Notas</label>
+                                                        <input type="text" name="dispo_notas[]" class="form-control" placeholder="Estado, accesorios, etc.">
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Valor Estimado</label>
+                                                    <input type="text" name="valor_estimado[]" class="form-control" placeholder="Ej: 720000" required>
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="row">
+                                    </template>
+
+                                    <div class="row mt-3">
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label">Cash Recibido</label>
-                                            <input type="number" name="cash_recibido" class="form-control" placeholder="Ej: 500000" value="0" min="0" step="1" required>
+                                            <input type="text" name="cash_recibido" class="form-control" placeholder="Ej: 5000000" required>
                                         </div>
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label">Nombre Cliente</label>
@@ -605,7 +704,7 @@
                                         </div>
                                     </div>
                                     <div class="alert alert-info">
-                                        <strong>Saldo Pendiente Calculado:</strong> Total Venta ({{ cel.precio_cliente|pesos }}) - Cash - Valor Recibido
+                                        <strong>Saldo Pendiente Calculado:</strong> Total Venta ({{ cel.precio_cliente|pesos }}) - Cash - Suma de valores recibidos
                                     </div>
                                 </div>
                                 <div class="modal-footer">
@@ -685,25 +784,17 @@
 
     // Función para formatear números como pesos colombianos
     function formatearPesos(valor) {
-        // Remover caracteres no numéricos (excepto puntos y comas)
-        let numeros = valor.replace(/[^\d.,]/g, '');
+        // Extraer solo los dígitos
+        let numeros = valor.replace(/[^\d]/g, '');
         // Si está vacío, retornar vacío
         if (!numeros) return '';
-        // Remover todos los puntos (separadores de miles previos) pero mantener última coma si existe
-        numeros = numeros.replace(/\./g, '');
-        // Si existe coma, separar la parte decimal
-        if (numeros.includes(',')) {
-            let partes = numeros.split(',');
-            numeros = partes[0] + ',' + partes[1].substring(0, 2); // Máximo 2 decimales
-        }
         // Agregar separadores de miles (puntos) en la parte entera
-        let partes = numeros.split(',');
-        partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-        return partes.join(',');
+        numeros = numeros.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        return numeros;
     }
 
     // Aplicar a todos los inputs de precio
-    document.querySelectorAll('input[name="precio_compra"], input[name="precio_cliente"], input[name="precio_patinado"], input[name="valor_estimado"], input[name="cash_recibido"]').forEach(input => {
+    document.querySelectorAll('input[name="precio_compra"], input[name="precio_cliente"], input[name="precio_patinado"], input[name^="valor_estimado"], input[name="cash_recibido"]').forEach(input => {
         input.addEventListener('input', function() {
             let valor = this.value;
             let formateado = formatearPesos(valor);
@@ -759,24 +850,103 @@
         new bootstrap.Tooltip(tooltipTriggerEl);
     });
 
-    // Toggle campos de retoma (Celular vs Dispositivo)
-    function toggleRetomaTipo(id) {
-        const sel = document.getElementById(`recibido_tipo_${id}`);
-        if (!sel) return;
-        const tipo = sel.value;
-        const celDiv = document.getElementById(`retoma_celular_fields_${id}`);
-        const dispDiv = document.getElementById(`retoma_dispositivo_fields_${id}`);
-        if (celDiv) celDiv.style.display = (tipo === 'celular') ? 'block' : 'none';
-        if (dispDiv) dispDiv.style.display = (tipo === 'dispositivo') ? 'block' : 'none';
-
-        // Alternar required
-        const q = (name) => document.querySelector(`#retomaModal${id} [name="${name}"]`);
-        ['imei_recibido','modelo_recibido'].forEach(n => { const el = q(n); if (el) el.required = (tipo === 'celular'); });
-        const gb = q('gb_recibido'); if (gb) gb.required = (tipo === 'celular');
-        ['dispo_tipo','dispo_marca','dispo_modelo'].forEach(n => { const el = q(n); if (el) el.required = (tipo === 'dispositivo'); });
+    // Retoma: múltiples ítems
+    function toggleItemType(selectEl) {
+        const item = selectEl.closest('.retoma-item');
+        if (!item) return;
+        const tipo = selectEl.value;
+        const celDiv = item.querySelector('.retoma-celular');
+        const dispDiv = item.querySelector('.retoma-dispositivo');
+        if (celDiv) {
+            celDiv.style.display = (tipo === 'celular') ? 'block' : 'none';
+            // IMPORTANTE: Deshabilitar campos ocultos para que no se envíen en el form
+            celDiv.querySelectorAll('input, select').forEach(el => {
+                el.disabled = (tipo !== 'celular');
+                el.required = (tipo === 'celular');
+            });
+        }
+        if (dispDiv) {
+            dispDiv.style.display = (tipo === 'dispositivo') ? 'block' : 'none';
+            // IMPORTANTE: Deshabilitar campos ocultos para que no se envíen en el form
+            dispDiv.querySelectorAll('input, select').forEach(el => {
+                el.disabled = (tipo !== 'dispositivo');
+                el.required = (tipo === 'dispositivo');
+            });
+        }
     }
 
-    // Exponer función al ámbito global
-    window.toggleRetomaTipo = toggleRetomaTipo;
+    function refreshRemoveButtons(container) {
+        const items = container.querySelectorAll('.retoma-item');
+        items.forEach((el, idx) => {
+            const btn = el.querySelector('.btn-remove-item');
+            if (btn) btn.style.display = (items.length > 1) ? 'inline-block' : 'none';
+            const sel = el.querySelector('select[name="recibido_tipo[]"]');
+            if (sel) toggleItemType(sel);
+        });
+    }
+
+    function addRetomaItem(modalId) {
+        console.log('addRetomaItem called with modalId:', modalId);
+        const tpl = document.getElementById(`retoma_tpl_${modalId}`);
+        const container = document.getElementById(`retoma_items_${modalId}`);
+        console.log('Template found:', tpl);
+        console.log('Container found:', container);
+        if (!tpl || !container) {
+            console.error('Template or container not found!');
+            return;
+        }
+        let clone;
+        if (tpl.content && tpl.content.firstElementChild) {
+            clone = tpl.content.firstElementChild.cloneNode(true);
+            console.log('Cloned from tpl.content');
+        } else {
+            const div = document.createElement('div');
+            div.innerHTML = tpl.innerHTML.trim();
+            clone = div.firstElementChild;
+            console.log('Cloned from innerHTML');
+        }
+        console.log('Clone created:', clone);
+        container.appendChild(clone);
+        console.log('Container children count:', container.children.length);
+        refreshRemoveButtons(container);
+    }
+
+    function removeRetomaItem(btn) {
+        const item = btn.closest('.retoma-item');
+        const container = btn.closest('.retoma-items');
+        if (item && container) {
+            item.remove();
+            refreshRemoveButtons(container);
+        }
+    }
+
+    // Inicializar contenedores existentes
+    document.querySelectorAll('.retoma-items').forEach(container => {
+        refreshRemoveButtons(container);
+    });
+
+    // Exponer funciones al ámbito global
+    window.addRetomaItem = addRetomaItem;
+    window.removeRetomaItem = removeRetomaItem;
+    window.toggleItemType = toggleItemType;
+    
+    // Debug: interceptar submit de formularios de retoma
+    document.querySelectorAll('form[action*="retoma"]').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            const formData = new FormData(this);
+            console.log('=== FORM SUBMIT DEBUG ===');
+            const tipos = formData.getAll('recibido_tipo[]');
+            console.log('recibido_tipo[] count:', tipos.length, tipos);
+            console.log('valor_estimado[] count:', formData.getAll('valor_estimado[]').length);
+            console.log('All form data:');
+            for (let [key, value] of formData.entries()) {
+                console.log(`  ${key}: ${value}`);
+            }
+            console.log('=========================');
+            if (tipos.length < 2) {
+                console.warn('WARNING: Only 1 item will be sent!');
+            }
+        });
+    });
 </script>
 {% endblock %}
