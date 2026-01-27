@@ -394,7 +394,7 @@
                                 {{ (t.ganancia_neta or 0)|pesos }}
                             </span>
                         </td>
-                        <td>{{ t.fecha|fecha_bogota }}</td>
+                        <td>{{ t.fecha.strftime('%H:%M:%S') }}</td>
                     </tr>
                     {% endfor %}
                 {% else %}
