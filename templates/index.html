@@ -786,16 +786,16 @@
                                         <div class="row">
                                             <div class="col-md-6 mb-3">
                                                 <label class="form-label">Nuevo Monto</label>
-                                                <input type="text" name="nuevo_monto" class="form-control" value="{{ t.monto|pesos }}">
+                                                <input type="text" name="nuevo_monto" class="form-control" value="{{ t.monto|int }}">
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label class="form-label">Nueva Ganancia Neta</label>
-                                                <input type="text" name="nueva_ganancia_neta" class="form-control" value="{{ t.ganancia_neta|pesos }}">
+                                                <input type="text" name="nueva_ganancia_neta" class="form-control" value="{{ t.ganancia_neta|int }}">
                                             </div>
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label">Cash recibido (retoma)</label>
-                                            <input type="text" name="nuevo_cash" class="form-control" value="{{ (t.cash_recibido_retoma or 0)|pesos }}" placeholder="Solo aplica si es retoma">
+                                            <input type="text" name="nuevo_cash" class="form-control" value="{{ (t.cash_recibido_retoma or 0)|int }}" placeholder="Solo aplica si es retoma">
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label">Nueva Descripción</label>

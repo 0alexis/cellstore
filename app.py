@@ -29,12 +29,11 @@ def obtener_fecha_bogota():
 # Filtro para formatear pesos colombianos (registrado en Jinja)
 @app.template_filter('pesos')
 def formato_pesos(valor):
-    """Formatea un número como pesos colombianos: $1.234.567,89"""
+    """Formatea un número como pesos colombianos: $1.234.567"""
     if valor is None:
         valor = 0
-    valor = float(valor)
-    partes = f"{valor:.2f}".split('.')
-    entero, decimales = partes[0], partes[1]
+    valor = int(float(valor))
+    entero = str(valor)
 
     entero_formateado = ""
     for i, digito in enumerate(reversed(entero)):
@@ -42,7 +41,7 @@ def formato_pesos(valor):
             entero_formateado = "." + entero_formateado
         entero_formateado = digito + entero_formateado
 
-    return f"${entero_formateado},{decimales}"
+    return f"${entero_formateado}"
 
 # Función para limpiar valores de pesos (remover puntos y convertir a float)
 def limpiar_pesos(valor):
@@ -1050,7 +1049,7 @@ def vender(id):
     trans = Transaccion(tipo='Venta', monto=monto, ganancia_neta=ganancia_neta, descripcion=descripcion)
     db.session.add(trans)
     db.session.commit()
-    flash(f'¡{celular.modelo} vendido como {sub_tipo}! Ganancia Neta: ${ganancia_neta:.2f}', 'success')
+    flash(f'¡{celular.modelo} vendido como {sub_tipo}! Ganancia Neta: ${int(ganancia_neta):,}'.replace(',', '.'), 'success')
     return redirect(url_for('index'))
 
 @app.route('/retoma', methods=['POST'])
