@@ -88,6 +88,11 @@
                         </div>
                     </div>
 
+                    <div class="mb-3 form-check">
+                        {{ form.plan_retoma(class="form-check-input", id="plan_retoma_edit") }}
+                        <label class="form-check-label" for="plan_retoma_edit">Permitir Plan Retoma</label>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label">Especificaciones</label>
                         {{ form.especificaciones(class="form-control", rows="3") }}

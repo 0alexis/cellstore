@@ -360,12 +360,10 @@
                     </td>
                     <td>{{ cel.tercero.local ~ ' - ' ~ cel.tercero.nombre if cel.tercero else 'N/A' }}</td>
                     <td>
-                        <div class="btn-group btn-group-sm" role="group">
-                            {% if user.role == 'Admin' %}
-                                <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editarModal{{ cel.id }}" onclick="cargarDatosEditar({{ cel.id }})">
-                                    Editar
-                                </button>
-                            {% endif %}
+                        <div class="btn-group btn-group-sm d-flex flex-wrap gap-2" role="group">
+                            <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editarModal{{ cel.id }}" onclick="cargarDatosEditar({{ cel.id }})">
+                                Editar
+                            </button>
                             <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#ventaModal{{ cel.id }}">
                                 Vendido
                             </button>
@@ -735,6 +733,8 @@
                     <th>Monto</th>
                     <th>Ganancia Neta</th>
                     <th>Fecha</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
                 </tr>
             </thead>
             <tbody>
@@ -750,10 +750,78 @@
                             </span>
                         </td>
                         <td>{{ t.fecha.strftime('%d/%m/%Y %H:%M:%S') }}</td>
+                        <td>
+                            {% if t.anulada %}
+                                <span class="badge bg-danger">Anulada</span>
+                            {% else %}
+                                <span class="badge bg-success">Activa</span>
+                            {% endif %}
+                            {% if t.ultimo_editor %}
+                                <div class="text-muted small">Editó: {{ t.ultimo_editor }}{% if t.editado_en %} · {{ t.editado_en.strftime('%d/%m/%Y %H:%M') }}{% endif %}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.role == 'Admin' and not t.anulada %}
+                                <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#corregirTx{{ t.id }}">Editar</button>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                     </tr>
+
+                    {% if user.role == 'Admin' %}
+                    <div class="modal fade" id="corregirTx{{ t.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Editar Transacción #{{ t.id }}</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form method="POST" action="{{ url_for('corregir_transaccion', id=t.id) }}">
+                                    <div class="modal-body">
+                                        <div class="mb-3">
+                                            <label class="form-label">Nuevo Tipo</label>
+                                            <input type="text" name="nuevo_tipo" class="form-control" value="{{ t.tipo }}">
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Nuevo Monto</label>
+                                                <input type="text" name="nuevo_monto" class="form-control" value="{{ t.monto|pesos }}">
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Nueva Ganancia Neta</label>
+                                                <input type="text" name="nueva_ganancia_neta" class="form-control" value="{{ t.ganancia_neta|pesos }}">
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Cash recibido (retoma)</label>
+                                            <input type="text" name="nuevo_cash" class="form-control" value="{{ (t.cash_recibido_retoma or 0)|pesos }}" placeholder="Solo aplica si es retoma">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Nueva Descripción</label>
+                                            <textarea name="nueva_descripcion" class="form-control" rows="2">{{ t.descripcion }}</textarea>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Motivo de edición <span class="text-danger">*</span></label>
+                                            <textarea name="motivo" class="form-control" rows="2" required placeholder="Ej: Error de digitación, monto correcto es..."></textarea>
+                                        </div>
+                                        <div class="alert alert-warning small mb-0">
+                                            Se actualiza la transacción y se registra quién la editó.
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" class="btn btn-warning">Guardar cambios</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
                     {% endfor %}
                 {% else %}
-                    <tr><td colspan="5" class="text-center">Sin transacciones aún</td></tr>
+                    <tr><td colspan="7" class="text-center">Sin transacciones aún</td></tr>
                 {% endif %}
             </tbody>
         </table>
@@ -762,7 +830,6 @@
 
 <!-- Script para formatear pesos automáticamente en inputs -->
 <script>
-    // Función para cargar datos del celular al modal de editar
     function cargarDatosEditar(celularId) {
         fetch(`/editar/${celularId}`)
             .then(response => response.json())
@@ -778,8 +845,7 @@
                 document.getElementById(`imei2${celularId}`).value = data.imei2 || '';
                 document.getElementById(`estado${celularId}`).value = data.estado;
                 document.getElementById(`notas${celularId}`).value = data.notas || '';
-            })
-            .catch(error => console.error('Error cargando datos:', error));
+            });
     }
 
     // Función para formatear números como pesos colombianos
@@ -794,7 +860,7 @@
     }
 
     // Aplicar a todos los inputs de precio
-    document.querySelectorAll('input[name="precio_compra"], input[name="precio_cliente"], input[name="precio_patinado"], input[name^="valor_estimado"], input[name="cash_recibido"]').forEach(input => {
+    document.querySelectorAll('input[name="precio_compra"], input[name="precio_cliente"], input[name="precio_patinado"], input[name^="valor_estimado"], input[name="cash_recibido"], input[name="nuevo_monto"], input[name="nueva_ganancia_neta"], input[name="nuevo_cash"]').forEach(input => {
         input.addEventListener('input', function() {
             let valor = this.value;
             let formateado = formatearPesos(valor);
@@ -802,8 +868,8 @@
         });
 
         // También formatear al cargar la página si ya tiene valor
-        if (this.value) {
-            this.value = formatearPesos(this.value);
+        if (input.value) {
+            input.value = formatearPesos(input.value);
         }
     });
 
@@ -859,17 +925,17 @@
         const dispDiv = item.querySelector('.retoma-dispositivo');
         if (celDiv) {
             celDiv.style.display = (tipo === 'celular') ? 'block' : 'none';
-            // IMPORTANTE: Deshabilitar campos ocultos para que no se envíen en el form
+            // Mantenerlos habilitados pero sin required si están ocultos
             celDiv.querySelectorAll('input, select').forEach(el => {
-                el.disabled = (tipo !== 'celular');
+                el.disabled = false;        // no deshabilitar, para que siempre se envíen
                 el.required = (tipo === 'celular');
             });
         }
         if (dispDiv) {
             dispDiv.style.display = (tipo === 'dispositivo') ? 'block' : 'none';
-            // IMPORTANTE: Deshabilitar campos ocultos para que no se envíen en el form
+            // Mantenerlos habilitados pero sin required si están ocultos
             dispDiv.querySelectorAll('input, select').forEach(el => {
-                el.disabled = (tipo !== 'dispositivo');
+                el.disabled = false;        // no deshabilitar, para que siempre se envíen
                 el.required = (tipo === 'dispositivo');
             });
         }
@@ -885,29 +951,46 @@
         });
     }
 
+    // Generador simple de IDs únicos por ítem
+    var retomaItemSeq = 0; // var para evitar TDZ en llamadas tempranas
+
     function addRetomaItem(modalId) {
-        console.log('addRetomaItem called with modalId:', modalId);
         const tpl = document.getElementById(`retoma_tpl_${modalId}`);
         const container = document.getElementById(`retoma_items_${modalId}`);
-        console.log('Template found:', tpl);
-        console.log('Container found:', container);
         if (!tpl || !container) {
-            console.error('Template or container not found!');
             return;
         }
         let clone;
         if (tpl.content && tpl.content.firstElementChild) {
             clone = tpl.content.firstElementChild.cloneNode(true);
-            console.log('Cloned from tpl.content');
         } else {
             const div = document.createElement('div');
             div.innerHTML = tpl.innerHTML.trim();
             clone = div.firstElementChild;
-            console.log('Cloned from innerHTML');
         }
-        console.log('Clone created:', clone);
+        // Asignar ID único al ítem
+        retomaItemSeq += 1;
+        const itemId = `retoma-${modalId}-${Date.now()}-${retomaItemSeq}`;
+        clone.setAttribute('data-item-id', itemId);
+
         container.appendChild(clone);
-        console.log('Container children count:', container.children.length);
+        
+        // Inicializar el toggle para el nuevo item
+        const selectTipo = clone.querySelector('select[name="recibido_tipo[]"]');
+        if (selectTipo) {
+            toggleItemType(selectTipo);
+        }
+        
+        // Aplicar formato de pesos al campo valor_estimado del nuevo item
+        const valorInput = clone.querySelector('input[name="valor_estimado[]"]');
+        if (valorInput) {
+            valorInput.addEventListener('input', function() {
+                let valor = this.value;
+                let formateado = formatearPesos(valor);
+                this.value = formateado;
+            });
+        }
+        
         refreshRemoveButtons(container);
     }
 
@@ -923,6 +1006,18 @@
     // Inicializar contenedores existentes
     document.querySelectorAll('.retoma-items').forEach(container => {
         refreshRemoveButtons(container);
+        // Inicializar el estado de los campos según el tipo seleccionado
+        container.querySelectorAll('select[name="recibido_tipo[]"]').forEach(sel => {
+            toggleItemType(sel);
+        });
+        // Asignar IDs únicos a los ítems existentes si no tienen
+        container.querySelectorAll('.retoma-item').forEach(item => {
+            if (!item.dataset.itemId) {
+                retomaItemSeq += 1;
+                const modalId = container.id.replace('retoma_items_', '') || 'x';
+                item.setAttribute('data-item-id', `retoma-${modalId}-${Date.now()}-${retomaItemSeq}`);
+            }
+        });
     });
 
     // Exponer funciones al ámbito global
@@ -930,22 +1025,56 @@
     window.removeRetomaItem = removeRetomaItem;
     window.toggleItemType = toggleItemType;
     
-    // Debug: interceptar submit de formularios de retoma
     document.querySelectorAll('form[action*="retoma"]').forEach(form => {
         form.addEventListener('submit', function(e) {
-            const formData = new FormData(this);
-            console.log('=== FORM SUBMIT DEBUG ===');
-            const tipos = formData.getAll('recibido_tipo[]');
-            console.log('recibido_tipo[] count:', tipos.length, tipos);
-            console.log('valor_estimado[] count:', formData.getAll('valor_estimado[]').length);
-            console.log('All form data:');
-            for (let [key, value] of formData.entries()) {
-                console.log(`  ${key}: ${value}`);
-            }
-            console.log('=========================');
-            if (tipos.length < 2) {
-                console.warn('WARNING: Only 1 item will be sent!');
-            }
+            // Construimos inputs ocultos para forzar que todos los ítems viajen en orden.
+            this.querySelectorAll('input.__retoma_temp').forEach(el => el.remove());
+
+            const items = Array.from(this.querySelectorAll('.retoma-items .retoma-item'));
+
+            // Quitar name a inputs visibles para que solo se usen los ocultos
+            items.forEach(item => {
+                item.querySelectorAll('input[name], select[name], textarea[name]').forEach(el => {
+                    el.dataset.origName = el.name;
+                    el.removeAttribute('name');
+                });
+            });
+
+            const pushHidden = (name, val) => {
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = name;
+                inp.value = val;
+                inp.classList.add('__retoma_temp');
+                form.appendChild(inp);
+            };
+
+            items.forEach(item => {
+                const getVal = (selector) => {
+                    const el = item.querySelector(selector);
+                    return el ? (el.value || '') : '';
+                };
+                const itemId = item.dataset.itemId || '';
+                const tipo = getVal('[data-orig-name="recibido_tipo[]"]') || getVal('select[data-orig-name="recibido_tipo[]"]') || getVal('select[name="recibido_tipo[]"]');
+
+                pushHidden('item_id[]', itemId);
+                pushHidden('recibido_tipo[]', tipo);
+                pushHidden('valor_estimado[]', getVal('input[data-orig-name="valor_estimado[]"]') || getVal('input[name="valor_estimado[]"]'));
+
+                if (tipo === 'celular') {
+                    pushHidden('imei_recibido[]', getVal('input[data-orig-name="imei_recibido[]"]') || getVal('input[name="imei_recibido[]"]'));
+                    pushHidden('modelo_recibido[]', getVal('input[data-orig-name="modelo_recibido[]"]') || getVal('input[name="modelo_recibido[]"]'));
+                    pushHidden('gb_recibido[]', getVal('select[data-orig-name="gb_recibido[]"]') || getVal('select[name="gb_recibido[]"]'));
+                } else {
+                    pushHidden('dispo_tipo[]', getVal('select[data-orig-name="dispo_tipo[]"]') || getVal('select[name="dispo_tipo[]"]'));
+                    pushHidden('dispo_marca[]', getVal('input[data-orig-name="dispo_marca[]"]') || getVal('input[name="dispo_marca[]"]'));
+                    pushHidden('dispo_modelo[]', getVal('input[data-orig-name="dispo_modelo[]"]') || getVal('input[name="dispo_modelo[]"]'));
+                    pushHidden('dispo_serial[]', getVal('input[data-orig-name="dispo_serial[]"]') || getVal('input[name="dispo_serial[]"]'));
+                    pushHidden('dispo_cantidad[]', getVal('input[data-orig-name="dispo_cantidad[]"]') || getVal('input[name="dispo_cantidad[]"]'));
+                    pushHidden('dispo_notas[]', getVal('input[data-orig-name="dispo_notas[]"]') || getVal('input[name="dispo_notas[]"]'));
+                }
+            });
+
         });
     });
 </script>

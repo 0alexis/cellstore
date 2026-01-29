@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from wtforms import StringField, FloatField, SelectField, TextAreaField, SubmitField, PasswordField
+from wtforms import StringField, FloatField, SelectField, TextAreaField, SubmitField, PasswordField, BooleanField
 from wtforms.validators import DataRequired, EqualTo
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -26,27 +26,23 @@ def obtener_fecha_bogota():
     """Retorna la fecha y hora actual de Bogotá, Colombia"""
     return datetime.now(bogota_tz)
 
-# Filtro para formatear pesos colombianos
+# Filtro para formatear pesos colombianos (registrado en Jinja)
+@app.template_filter('pesos')
 def formato_pesos(valor):
     """Formatea un número como pesos colombianos: $1.234.567,89"""
     if valor is None:
         valor = 0
     valor = float(valor)
-    # Formatear con 2 decimales
     partes = f"{valor:.2f}".split('.')
-    entero = partes[0]
-    decimales = partes[1]
-    
-    # Agregar separador de miles (punto)
+    entero, decimales = partes[0], partes[1]
+
     entero_formateado = ""
     for i, digito in enumerate(reversed(entero)):
         if i > 0 and i % 3 == 0:
             entero_formateado = "." + entero_formateado
         entero_formateado = digito + entero_formateado
-    
-    return f"${entero_formateado},{decimales}"
 
-app.jinja_env.filters['pesos'] = formato_pesos
+    return f"${entero_formateado},{decimales}"
 
 # Función para limpiar valores de pesos (remover puntos y convertir a float)
 def limpiar_pesos(valor):
@@ -153,8 +149,14 @@ class Transaccion(db.Model):
     tipo = db.Column(db.String(20), nullable=False)
     monto = db.Column(db.Float, nullable=False)
     ganancia_neta = db.Column(db.Float, default=0.0)
+    cash_recibido_retoma = db.Column(db.Float, default=0.0)
     descripcion = db.Column(db.Text)
     fecha = db.Column(db.DateTime, default=obtener_fecha_bogota)
+    anulada = db.Column(db.Boolean, default=False)
+    motivo_anulacion = db.Column(db.Text)
+    ultimo_editor = db.Column(db.String(50))
+    editado_en = db.Column(db.DateTime)
+    motivo_edicion = db.Column(db.Text)
 
 # Modelo Dispositivo (para PC, Tablets, iPad, Cámaras, etc.)
 class Dispositivo(db.Model):
@@ -172,6 +174,7 @@ class Dispositivo(db.Model):
     en_stock = db.Column(db.Boolean, default=True)
     fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
     tercero_id = db.Column(db.Integer, db.ForeignKey('tercero.id'), nullable=True)
+    plan_retoma = db.Column(db.Boolean, default=True)
 
     tercero = db.relationship('Tercero', backref='dispositivos')
 
@@ -232,6 +235,7 @@ class DispositivoForm(FlaskForm):
         ('Servicio Técnico', 'Servicio Técnico')
     ], validators=[DataRequired()])
     notas = TextAreaField('Notas')
+    plan_retoma = BooleanField('Permite Plan Retoma', default=True)
     submit = SubmitField('Guardar')
 
 with app.app_context():
@@ -253,6 +257,36 @@ with app.app_context():
                 conn.execute(text('ALTER TABLE transaccion ADD COLUMN ganancia_neta FLOAT DEFAULT 0.0'))
                 conn.commit()
             print("✓ Migración completada.")
+        if 'cash_recibido_retoma' not in columns:
+            print("Migrando tabla transaccion: agregando columna cash_recibido_retoma...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE transaccion ADD COLUMN cash_recibido_retoma FLOAT DEFAULT 0.0'))
+                conn.commit()
+        if 'anulada' not in columns:
+            print("Migrando tabla transaccion: agregando columna anulada...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE transaccion ADD COLUMN anulada BOOLEAN DEFAULT 0'))
+                conn.commit()
+        if 'motivo_anulacion' not in columns:
+            print("Migrando tabla transaccion: agregando columna motivo_anulacion...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE transaccion ADD COLUMN motivo_anulacion TEXT NULL'))
+                conn.commit()
+        if 'ultimo_editor' not in columns:
+            print("Migrando tabla transaccion: agregando columna ultimo_editor...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE transaccion ADD COLUMN ultimo_editor VARCHAR(50) NULL'))
+                conn.commit()
+        if 'editado_en' not in columns:
+            print("Migrando tabla transaccion: agregando columna editado_en...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE transaccion ADD COLUMN editado_en DATETIME NULL'))
+                conn.commit()
+        if 'motivo_edicion' not in columns:
+            print("Migrando tabla transaccion: agregando columna motivo_edicion...")
+            with db.engine.connect() as conn:
+                conn.execute(text('ALTER TABLE transaccion ADD COLUMN motivo_edicion TEXT NULL'))
+                conn.commit()
         # Migración: agregar columnas tercero_id y patinado_en en celular si no existen
         try:
             columnas_celular = [col['name'] for col in inspector.get_columns('celular')]
@@ -273,6 +307,17 @@ with app.app_context():
                     conn.commit()
         except Exception as mig_e:
             print(f"Nota migración celular: {mig_e}")
+
+        # Migración: agregar columna plan_retoma en dispositivo si no existe
+        try:
+            columnas_dispositivo = [col['name'] for col in inspector.get_columns('dispositivo')]
+            if 'plan_retoma' not in columnas_dispositivo:
+                print("Migrando tabla dispositivo: agregando columna plan_retoma...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE dispositivo ADD COLUMN plan_retoma BOOLEAN DEFAULT 1'))
+                    conn.commit()
+        except Exception as mig_disp:
+            print(f"Nota migración dispositivo: {mig_disp}")
     except Exception as e:
         print(f"Nota migración: {e}")
 
@@ -444,7 +489,8 @@ def dispositivos():
                 cantidad=int(form.cantidad.data),
                 estado=form.estado.data,
                 notas=form.notas.data,
-                en_stock=True
+                en_stock=True,
+                plan_retoma=bool(form.plan_retoma.data)
             )
             db.session.add(dispositivo)
             db.session.commit()
@@ -522,6 +568,7 @@ def editar_dispositivo(id):
             dispositivo.cantidad = int(form.cantidad.data)
             dispositivo.estado = form.estado.data
             dispositivo.notas = form.notas.data
+            dispositivo.plan_retoma = bool(form.plan_retoma.data)
             db.session.commit()
             flash('Dispositivo actualizado.', 'success')
             return redirect(url_for('dispositivos'))
@@ -545,6 +592,7 @@ def editar_dispositivo(id):
         form.cantidad.data = dispositivo.cantidad
         form.estado.data = dispositivo.estado
         form.notas.data = dispositivo.notas
+        form.plan_retoma.data = dispositivo.plan_retoma
     
     return render_template('editar_dispositivo.html', form=form, dispositivo=dispositivo, user=current_user)
 
@@ -624,6 +672,10 @@ def eliminar_dispositivo(id):
 @login_required
 def vender_dispositivo(id):
     dispositivo = Dispositivo.query.get_or_404(id)
+    search = request.form.get('search', '')
+    tipo_filtro = request.form.get('tipo', '')
+    estado_filtro = request.form.get('estado', '')
+    orden = request.form.get('orden', 'ultimos')
     
     try:
         # Calcular ganancia neta
@@ -652,6 +704,151 @@ def vender_dispositivo(id):
         flash(f'Error al registrar venta: {str(e)}', 'error')
     
     return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
+
+
+@app.route('/dispositivo/retoma/<int:id>', methods=['POST'])
+@login_required
+def retoma_dispositivo(id):
+    dispositivo = Dispositivo.query.get_or_404(id)
+
+    total_venta = float(request.form.get('total_venta', dispositivo.precio_venta * dispositivo.cantidad))
+    cash_recibido = limpiar_pesos(request.form.get('cash_recibido', 0))
+    cliente_nombre = request.form.get('cliente_nombre', 'Cliente')
+
+    tipos_raw = request.form.getlist('recibido_tipo[]')
+    valores_raw = request.form.getlist('valor_estimado[]')
+
+    dispo_tipos_raw = request.form.getlist('dispo_tipo[]')
+    dispo_marcas_raw = request.form.getlist('dispo_marca[]')
+    dispo_modelos_raw = request.form.getlist('dispo_modelo[]')
+    dispo_seriales_raw = request.form.getlist('dispo_serial[]')
+    dispo_cantidades_raw = request.form.getlist('dispo_cantidad[]')
+    dispo_notas_raw = request.form.getlist('dispo_notas[]')
+
+    imeis_raw = request.form.getlist('imei_recibido[]')
+    modelos_rec_raw = request.form.getlist('modelo_recibido[]')
+    gbs_rec_raw = request.form.getlist('gb_recibido[]')
+
+    max_items = max(
+        len(tipos_raw), len(valores_raw),
+        len(dispo_tipos_raw), len(dispo_marcas_raw), len(dispo_modelos_raw),
+        len(dispo_seriales_raw), len(dispo_cantidades_raw), len(dispo_notas_raw),
+        len(imeis_raw), len(modelos_rec_raw), len(gbs_rec_raw)
+    )
+
+    if max_items == 0:
+        flash('Debes agregar al menos un ítem recibido en la retoma.', 'error')
+        return redirect(url_for('dispositivos'))
+
+    def pad_list(lst, length, fill=None):
+        return list(lst) + [fill] * max(0, length - len(lst))
+
+    tipos_norm = []
+    for i in range(max_items):
+        if i < len(tipos_raw) and tipos_raw[i]:
+            tipos_norm.append(tipos_raw[i])
+        elif i < len(imeis_raw) and imeis_raw[i]:
+            tipos_norm.append('celular')
+        elif i < len(dispo_tipos_raw) and dispo_tipos_raw[i]:
+            tipos_norm.append('dispositivo')
+        else:
+            tipos_norm.append('dispositivo')
+
+    valores_norm = pad_list(valores_raw, max_items, '0')
+
+    cel_ptr = 0
+    dispo_ptr = 0
+
+    # Marcar dispositivo vendido
+    dispositivo.estado = 'Vendido'
+    dispositivo.en_stock = False
+    db.session.commit()
+
+    items_descripciones = []
+    total_valor_estimado = 0
+
+    for idx in range(max_items):
+        tipo = tipos_norm[idx]
+        valor_item = limpiar_pesos(valores_norm[idx]) if idx < len(valores_norm) else 0
+        if valor_item is None:
+            valor_item = 0
+        total_valor_estimado += valor_item
+
+        if tipo == 'celular':
+            imei_val = imeis_raw[cel_ptr] if cel_ptr < len(imeis_raw) else None
+            modelo_val = modelos_rec_raw[cel_ptr] if cel_ptr < len(modelos_rec_raw) else None
+            gb_val = gbs_rec_raw[cel_ptr] if cel_ptr < len(gbs_rec_raw) else None
+            cel_ptr += 1
+            retoma_cel = Celular(
+                imei1=imei_val,
+                modelo=modelo_val or 'N/A',
+                gb=gb_val,
+                precio_compra=valor_item,
+                precio_cliente=valor_item * 1.2,
+                estado='local',
+                notas=f'Recibido por plan retoma de {dispositivo.tipo} {dispositivo.modelo}'
+            )
+            db.session.add(retoma_cel)
+            db.session.flush()
+            items_descripciones.append(f'Celular {retoma_cel.modelo} IMEI {imei_val or "N/A"}')
+        else:
+            tipo_val = dispo_tipos_raw[dispo_ptr] if dispo_ptr < len(dispo_tipos_raw) else None
+            marca_val = dispo_marcas_raw[dispo_ptr] if dispo_ptr < len(dispo_marcas_raw) else None
+            modelo_val = dispo_modelos_raw[dispo_ptr] if dispo_ptr < len(dispo_modelos_raw) else None
+            serial_val = dispo_seriales_raw[dispo_ptr] if dispo_ptr < len(dispo_seriales_raw) else None
+            try:
+                cantidad_val = int(dispo_cantidades_raw[dispo_ptr]) if dispo_ptr < len(dispo_cantidades_raw) and dispo_cantidades_raw[dispo_ptr] is not None else 1
+            except ValueError:
+                cantidad_val = 1
+            notas_val = dispo_notas_raw[dispo_ptr] if dispo_ptr < len(dispo_notas_raw) else None
+            dispo_ptr += 1
+
+            nuevo_dispo = Dispositivo(
+                tipo=tipo_val or 'Otro',
+                marca=marca_val or 'N/A',
+                modelo=modelo_val or 'N/A',
+                especificaciones=None,
+                serial=serial_val,
+                precio_compra=valor_item,
+                precio_venta=valor_item * 1.2,
+                estado='local',
+                cantidad=cantidad_val,
+                notas=notas_val,
+                en_stock=True
+            )
+            db.session.add(nuevo_dispo)
+            db.session.flush()
+            items_descripciones.append(f'Dispositivo {tipo_val or "Otro"} {marca_val or "N/A"} {modelo_val or "N/A"} ({cantidad_val}x)')
+
+    db.session.commit()
+
+    saldo_pendiente = total_venta - cash_recibido - total_valor_estimado
+    costo_base = (dispositivo.precio_compra or 0) * (dispositivo.cantidad or 1)
+    ganancia_neta_retoma = cash_recibido + total_valor_estimado - costo_base
+    descripcion_trans = f'Retoma de {", ".join(items_descripciones)} por {dispositivo.tipo} {dispositivo.marca} {dispositivo.modelo} + cash ${cash_recibido}'
+
+    trans = Transaccion(
+        tipo='Venta Retoma Dispositivo',
+        monto=total_venta,
+        ganancia_neta=ganancia_neta_retoma,
+        descripcion=descripcion_trans,
+        cash_recibido_retoma=cash_recibido
+    )
+    db.session.add(trans)
+    db.session.commit()
+
+    if saldo_pendiente > 0:
+        deuda = Deuda(
+            cliente_nombre=cliente_nombre,
+            monto_pendiente=saldo_pendiente,
+            fecha_vencida=obtener_fecha_bogota().date() + timedelta(days=30),
+            notas='Saldo por retoma dispositivo'
+        )
+        db.session.add(deuda)
+        db.session.commit()
+
+    flash(f'¡Plan Retoma registrado para {dispositivo.tipo} {dispositivo.modelo}! Saldo pendiente: ${saldo_pendiente if saldo_pendiente > 0 else "Ninguno"}', 'success')
+    return redirect(url_for('dispositivos'))
 
 @app.route('/', methods=['GET', 'POST'])
 @login_required
@@ -733,10 +930,10 @@ def editar(id):
     if current_user.role != 'Admin':
         flash('Acceso denegado.', 'error')
         return redirect(url_for('index'))
-    
+
     celular = Celular.query.get_or_404(id)
-    
-    # Si es GET, retornar JSON con los datos (para llenar el modal)
+
+    # GET: datos para modal
     if request.method == 'GET':
         from flask import jsonify
         return jsonify({
@@ -752,33 +949,33 @@ def editar(id):
             'estado': celular.estado,
             'notas': celular.notas
         })
-    
-    # Si es POST, actualizar los datos
-    form = CelularForm()
+
+    # POST: actualizar con datos del modal
     try:
-        if form.validate_on_submit():
-            celular.imei1 = form.imei1.data
-            celular.imei2 = form.imei2.data
-            celular.modelo = form.modelo.data
-            celular.color = form.color.data
-            celular.gb = form.gb.data
-            celular.precio_compra = limpiar_pesos(form.precio_compra.data)
-            celular.precio_cliente = limpiar_pesos(form.precio_cliente.data)
-            celular.precio_patinado = limpiar_pesos(form.precio_patinado.data)
-            celular.estado = form.estado.data
-            celular.notas = form.notas.data
-            db.session.commit()
-            flash('¡Celular actualizado!', 'success')
+        imei1 = (request.form.get('imei1') or '').strip()
+        if not imei1:
+            flash('IMEI1 es obligatorio.', 'error')
             return redirect(url_for('index'))
-        else:
-            # Mostrar errores del formulario
-            print(f"Errores del formulario: {form.errors}")
-            for field, errors in form.errors.items():
-                flash(f"{field}: {', '.join(errors)}", 'error')
+
+        celular.imei1 = imei1
+        celular.imei2 = (request.form.get('imei2') or '').strip() or None
+        celular.modelo = (request.form.get('modelo') or celular.modelo).strip()
+        celular.color = (request.form.get('color') or '').strip() or None
+        celular.gb = (request.form.get('gb') or celular.gb).strip()
+        celular.precio_compra = limpiar_pesos(request.form.get('precio_compra'))
+        celular.precio_cliente = limpiar_pesos(request.form.get('precio_cliente'))
+        celular.precio_patinado = limpiar_pesos(request.form.get('precio_patinado'))
+        celular.estado = request.form.get('estado') or celular.estado
+        celular.notas = (request.form.get('notas') or '').strip()
+        celular.en_stock = (celular.estado != 'Vendido')
+
+        db.session.commit()
+        flash('¡Celular actualizado!', 'success')
     except Exception as e:
+        db.session.rollback()
         print(f"Error al actualizar: {str(e)}")
         flash(f'Error al actualizar celular: {str(e)}', 'error')
-    
+
     return redirect(url_for('index'))
 
 @app.route('/eliminar/<int:id>', methods=['POST'])
@@ -791,6 +988,44 @@ def eliminar(id):
     db.session.delete(celular)
     db.session.commit()
     flash('¡Celular eliminado!', 'success')
+    return redirect(url_for('index'))
+
+
+@app.route('/transaccion/corregir/<int:id>', methods=['POST'])
+@login_required
+def corregir_transaccion(id):
+    if current_user.role != 'Admin':
+        flash('Acceso denegado.', 'error')
+        return redirect(url_for('index'))
+
+    trans = Transaccion.query.get_or_404(id)
+
+    motivo = (request.form.get('motivo') or '').strip()
+    if not motivo:
+        flash('Debes indicar un motivo de corrección.', 'error')
+        return redirect(url_for('index'))
+
+    nuevo_tipo = (request.form.get('nuevo_tipo') or trans.tipo).strip()
+    nuevo_monto = limpiar_pesos(request.form.get('nuevo_monto'))
+    nueva_ganancia = limpiar_pesos(request.form.get('nueva_ganancia_neta'))
+    nuevo_cash = limpiar_pesos(request.form.get('nuevo_cash'))
+    nueva_desc = (request.form.get('nueva_descripcion') or trans.descripcion or '').strip()
+
+    try:
+        trans.tipo = nuevo_tipo or trans.tipo
+        trans.monto = nuevo_monto
+        trans.ganancia_neta = nueva_ganancia
+        trans.cash_recibido_retoma = nuevo_cash if nuevo_cash is not None else (trans.cash_recibido_retoma or 0)
+        trans.descripcion = nueva_desc
+        trans.ultimo_editor = current_user.username
+        trans.editado_en = obtener_fecha_bogota()
+        trans.motivo_edicion = motivo
+        db.session.commit()
+        flash(f'Transacción #{trans.id} actualizada.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al corregir transacción: {str(e)}', 'error')
+
     return redirect(url_for('index'))
 
 @app.route('/vender/<int:id>', methods=['POST'])
@@ -826,11 +1061,54 @@ def retoma():
     cash_recibido = limpiar_pesos(request.form.get('cash_recibido', 0))
     cliente_nombre = request.form.get('cliente_nombre', 'Cliente')
 
-    tipos = request.form.getlist('recibido_tipo[]')
-    valores = request.form.getlist('valor_estimado[]')
-    if not tipos or not valores or len(tipos) != len(valores):
+    tipos_raw = request.form.getlist('recibido_tipo[]')
+    valores_raw = request.form.getlist('valor_estimado[]')
+
+    # Listas de dispositivos
+    dispo_tipos_raw = request.form.getlist('dispo_tipo[]')
+    dispo_marcas_raw = request.form.getlist('dispo_marca[]')
+    dispo_modelos_raw = request.form.getlist('dispo_modelo[]')
+    dispo_seriales_raw = request.form.getlist('dispo_serial[]')
+    dispo_cantidades_raw = request.form.getlist('dispo_cantidad[]')
+    dispo_notas_raw = request.form.getlist('dispo_notas[]')
+
+    # Listas de celulares
+    imeis_raw = request.form.getlist('imei_recibido[]')
+    modelos_rec_raw = request.form.getlist('modelo_recibido[]')
+    gbs_rec_raw = request.form.getlist('gb_recibido[]')
+
+    max_items = max(
+        len(tipos_raw), len(valores_raw),
+        len(dispo_tipos_raw), len(dispo_marcas_raw), len(dispo_modelos_raw),
+        len(dispo_seriales_raw), len(dispo_cantidades_raw), len(dispo_notas_raw),
+        len(imeis_raw), len(modelos_rec_raw), len(gbs_rec_raw)
+    )
+
+    if max_items == 0:
         flash('Debes agregar al menos un ítem recibido en la retoma.', 'error')
         return redirect(url_for('index'))
+
+    def pad_list(lst, length, fill=None):
+        return list(lst) + [fill] * max(0, length - len(lst))
+
+    tipos_norm = []
+    for i in range(max_items):
+        tipo_val = None
+        if i < len(tipos_raw) and tipos_raw[i]:
+            tipo_val = tipos_raw[i]
+        elif i < len(imeis_raw) and imeis_raw[i]:
+            tipo_val = 'celular'
+        elif i < len(dispo_tipos_raw) and dispo_tipos_raw[i]:
+            tipo_val = 'dispositivo'
+        else:
+            tipo_val = 'dispositivo'
+        tipos_norm.append(tipo_val)
+
+    valores_norm = pad_list(valores_raw, max_items, '0')
+
+    # Punteros para alinear datos por tipo
+    cel_ptr = 0
+    dispo_ptr = 0
 
     # Actualiza el celular vendido
     celular = Celular.query.get_or_404(celular_id)
@@ -842,47 +1120,43 @@ def retoma():
     total_valor_estimado = 0
 
     # Para listas específicas por tipo
-    imeis = request.form.getlist('imei_recibido[]')
-    modelos_rec = request.form.getlist('modelo_recibido[]')
-    gbs_rec = request.form.getlist('gb_recibido[]')
-
-    dispo_tipos = request.form.getlist('dispo_tipo[]')
-    dispo_marcas = request.form.getlist('dispo_marca[]')
-    dispo_modelos = request.form.getlist('dispo_modelo[]')
-    dispo_seriales = request.form.getlist('dispo_serial[]')
-    dispo_cantidades = request.form.getlist('dispo_cantidad[]')
-    dispo_notas_list = request.form.getlist('dispo_notas[]')
+    # (listas ya leídas arriba)
 
     celular_idx = 0
     dispositivo_idx = 0
     
     print("="*80)
-    print("DEBUG /retoma - Leyendo tipos e índices:")
-    print(f"tipos: {tipos}")
-    print(f"valores: {valores}")
-    print(f"dispo_tipos: {dispo_tipos}")
-    print(f"dispo_marcas: {dispo_marcas}")
-    print(f"dispo_modelos: {dispo_modelos}")
-    print(f"dispo_seriales: {dispo_seriales}")
-    print(f"dispo_cantidades: {dispo_cantidades}")
-    print(f"dispo_notas_list: {dispo_notas_list}")
+    print("DEBUG /retoma - Listas normalizadas")
+    print(f"tipos_norm: {tipos_norm}")
+    print(f"valores_norm: {valores_norm}")
+    print(f"dispo_tipos_raw: {dispo_tipos_raw}")
+    print(f"dispo_marcas_raw: {dispo_marcas_raw}")
+    print(f"dispo_modelos_raw: {dispo_modelos_raw}")
+    print(f"dispo_seriales_raw: {dispo_seriales_raw}")
+    print(f"dispo_cantidades_raw: {dispo_cantidades_raw}")
+    print(f"dispo_notas_raw: {dispo_notas_raw}")
+    print(f"imeis_raw: {imeis_raw}")
+    print(f"modelos_rec_raw: {modelos_rec_raw}")
+    print(f"gbs_rec_raw: {gbs_rec_raw}")
     print("="*80)
     
-    for idx, tipo in enumerate(tipos):
+    for idx in range(max_items):
+        tipo = tipos_norm[idx]
         print(f"\n>>> Procesando ítem {idx}: tipo='{tipo}'")
-        valor_item = limpiar_pesos(valores[idx]) if idx < len(valores) else 0
+        valor_item = limpiar_pesos(valores_norm[idx]) if idx < len(valores_norm) else 0
         if valor_item is None:
             valor_item = 0
         total_valor_estimado += valor_item
 
         if tipo == 'celular':
-            print(f"  -> Es CELULAR")
-            imei_val = imeis[celular_idx] if celular_idx < len(imeis) else None
-            modelo_val = modelos_rec[celular_idx] if celular_idx < len(modelos_rec) else 'N/A'
-            gb_val = gbs_rec[celular_idx] if celular_idx < len(gbs_rec) else None
+            print("  -> Es CELULAR")
+            imei_val = imeis_raw[cel_ptr] if cel_ptr < len(imeis_raw) else None
+            modelo_val = modelos_rec_raw[cel_ptr] if cel_ptr < len(modelos_rec_raw) else None
+            gb_val = gbs_rec_raw[cel_ptr] if cel_ptr < len(gbs_rec_raw) else None
+            cel_ptr += 1
             retoma_cel = Celular(
                 imei1=imei_val,
-                modelo=modelo_val,
+                modelo=modelo_val or 'N/A',
                 gb=gb_val,
                 precio_compra=valor_item,
                 precio_cliente=valor_item * 1.2,
@@ -891,19 +1165,20 @@ def retoma():
             )
             db.session.add(retoma_cel)
             db.session.flush()  # asegurar inserción inmediata
-            items_descripciones.append(f'Celular {modelo_val} IMEI {imei_val or "N/A"}')
+            items_descripciones.append(f'Celular {retoma_cel.modelo} IMEI {imei_val or "N/A"}')
             celular_idx += 1
         else:
             print(f"  -> Es DISPOSITIVO (dispositivo_idx={dispositivo_idx})")
-            tipo_val = dispo_tipos[dispositivo_idx] if dispositivo_idx < len(dispo_tipos) else 'Otro'
-            marca_val = dispo_marcas[dispositivo_idx] if dispositivo_idx < len(dispo_marcas) else 'N/A'
-            modelo_val = dispo_modelos[dispositivo_idx] if dispositivo_idx < len(dispo_modelos) else 'N/A'
-            serial_val = dispo_seriales[dispositivo_idx] if dispositivo_idx < len(dispo_seriales) else None
+            tipo_val = dispo_tipos_raw[dispo_ptr] if dispo_ptr < len(dispo_tipos_raw) else None
+            marca_val = dispo_marcas_raw[dispo_ptr] if dispo_ptr < len(dispo_marcas_raw) else None
+            modelo_val = dispo_modelos_raw[dispo_ptr] if dispo_ptr < len(dispo_modelos_raw) else None
+            serial_val = dispo_seriales_raw[dispo_ptr] if dispo_ptr < len(dispo_seriales_raw) else None
             try:
-                cantidad_val = int(dispo_cantidades[dispositivo_idx]) if dispositivo_idx < len(dispo_cantidades) else 1
+                cantidad_val = int(dispo_cantidades_raw[dispo_ptr]) if dispo_ptr < len(dispo_cantidades_raw) and dispo_cantidades_raw[dispo_ptr] is not None else 1
             except ValueError:
                 cantidad_val = 1
-            notas_val = dispo_notas_list[dispositivo_idx] if dispositivo_idx < len(dispo_notas_list) else None
+            notas_val = dispo_notas_raw[dispo_ptr] if dispo_ptr < len(dispo_notas_raw) else None
+            dispo_ptr += 1
             print(f"     Datos extraídos: tipo='{tipo_val}' marca='{marca_val}' modelo='{modelo_val}' serial='{serial_val}' cantidad={cantidad_val}")
             dispositivo = Dispositivo(
                 tipo=tipo_val or 'Otro',
@@ -920,10 +1195,10 @@ def retoma():
             )
             print(f"     Dispositivo objeto creado: {dispositivo}")
             db.session.add(dispositivo)
-            print(f"     Dispositivo agregado a sesión")
+            print("     Dispositivo agregado a sesión")
             db.session.flush()  # asegurar inserción inmediata
             print(f"     Dispositivo flushed (ID={dispositivo.id})")
-            items_descripciones.append(f'Dispositivo {tipo_val} {marca_val} {modelo_val} ({cantidad_val}x)')
+            items_descripciones.append(f'Dispositivo {tipo_val or "Otro"} {marca_val or "N/A"} {modelo_val or "N/A"} ({cantidad_val}x)')
             dispositivo_idx += 1
 
     db.session.commit()
@@ -936,7 +1211,8 @@ def retoma():
         tipo='Venta Retoma',
         monto=total_venta,
         ganancia_neta=ganancia_neta_retoma,
-        descripcion=descripcion_trans
+        descripcion=descripcion_trans,
+        cash_recibido_retoma=cash_recibido
     )
     db.session.add(trans)
     db.session.commit()
