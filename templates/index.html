@@ -277,6 +277,86 @@
     </div>
 </div>
 
+<!-- Modal para Reactivar Celular (cuando el IMEI ya existe pero está vendido) -->
+<div class="modal fade" id="reactivarModal" tabindex="-1" aria-labelledby="reactivarModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="reactivarModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>¡Celular encontrado en historial!
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" id="reactivarForm" action="">
+                {{ form.csrf_token }}
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong>Este celular ya estuvo en el inventario anteriormente.</strong><br>
+                        <span id="reactivarInfo"></span>
+                    </div>
+                    
+                    <h6>Actualizar datos para reingreso:</h6>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Modelo</label>
+                            <input type="text" class="form-control" id="reactivar_modelo" name="modelo" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">GB</label>
+                            <select class="form-select" id="reactivar_gb" name="gb" required>
+                                <option value="16">16 GB</option>
+                                <option value="32">32 GB</option>
+                                <option value="64">64 GB</option>
+                                <option value="128">128 GB</option>
+                                <option value="256">256 GB</option>
+                                <option value="512">512 GB</option>
+                                <option value="1TB">1 TB</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Color</label>
+                            <input type="text" class="form-control" id="reactivar_color" name="color">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Nuevo Precio Compra <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control precio-input" id="reactivar_precio_compra" name="precio_compra" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Precio Cliente</label>
+                            <input type="text" class="form-control precio-input" id="reactivar_precio_cliente" name="precio_cliente">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Precio Patinado</label>
+                            <input type="text" class="form-control precio-input" id="reactivar_precio_patinado" name="precio_patinado">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Estado</label>
+                            <select class="form-select" id="reactivar_estado" name="estado">
+                                <option value="Patinado">Patinado</option>
+                                <option value="Servicio Técnico">Servicio Técnico</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Notas</label>
+                            <textarea class="form-control" id="reactivar_notas" name="notas" rows="2" placeholder="Ej: Reingreso por retoma"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-redo me-1"></i>Reactivar Celular
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Modal para crear Tercero -->
 <div class="modal fade" id="terceroModal" tabindex="-1" aria-labelledby="terceroModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -328,8 +408,16 @@
         <tbody>
             {% if celulares %}
                 {% for cel in celulares %}
-                <tr>
-                    <td>{{ cel.imei1 }}</td>
+                <tr class="{% if not cel.en_stock %}table-secondary{% endif %}">
+                    <td>
+                        {{ cel.imei1 }}
+                        {% if not cel.en_stock %}
+                            <span class="badge bg-dark ms-1">VENDIDO</span>
+                        {% endif %}
+                        {% if cel.veces_ingresado and cel.veces_ingresado > 1 %}
+                            <span class="badge bg-info ms-1" title="Este celular ha ingresado {{ cel.veces_ingresado }} veces">#{{ cel.veces_ingresado }}</span>
+                        {% endif %}
+                    </td>
                     <td>{{ cel.imei2 or 'N/A' }}</td>
                     <td>{{ cel.modelo }}</td>
                     <td>{{ cel.color or 'N/A' }}</td>
@@ -337,6 +425,7 @@
                     <td>{{ cel.precio_cliente|pesos }}</td>
                     <td>{{ cel.precio_patinado|pesos }}</td>
                     <td>
+                        {% if cel.en_stock %}
                         <form method="POST" action="{{ url_for('cambiar_estado', id=cel.id) }}" style="display: inline;">
                               <select class="form-select form-select-sm estado-select
                                 {% if cel.estado == 'Patinado' %}bg-danger text-white
@@ -357,9 +446,13 @@
                                 {% endfor %}
                             </select>
                         </form>
+                        {% else %}
+                        <span class="badge bg-dark">Fuera de stock</span>
+                        {% endif %}
                     </td>
                     <td>{{ cel.tercero.local ~ ' - ' ~ cel.tercero.nombre if cel.tercero else 'N/A' }}</td>
                     <td>
+                        {% if cel.en_stock %}
                         <div class="btn-group btn-group-sm d-flex flex-wrap gap-2" role="group">
                             <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editarModal{{ cel.id }}" onclick="cargarDatosEditar({{ cel.id }})">
                                 Editar
@@ -371,8 +464,67 @@
                                 Retoma
                             </button>
                         </div>
+                        {% else %}
+                        <form method="POST" action="{{ url_for('reactivar_celular', id=cel.id) }}" class="d-inline">
+                            {{ form.csrf_token }}
+                            <input type="hidden" name="modelo" value="{{ cel.modelo }}">
+                            <input type="hidden" name="gb" value="{{ cel.gb }}">
+                            <input type="hidden" name="color" value="{{ cel.color or '' }}">
+                            <input type="hidden" name="precio_compra" value="0">
+                            <input type="hidden" name="precio_cliente" value="{{ cel.precio_cliente }}">
+                            <input type="hidden" name="precio_patinado" value="{{ cel.precio_patinado }}">
+                            <input type="hidden" name="estado" value="Patinado">
+                            <input type="hidden" name="notas" value="Reingreso rápido">
+                            <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#reactivarRapido{{ cel.id }}">
+                                <i class="fas fa-redo"></i> Reingresar
+                            </button>
+                        </form>
+                        {% endif %}
                     </td>
                 </tr>
+                
+                {% if not cel.en_stock %}
+                <!-- Modal Reactivar Rápido para celular vendido -->
+                <div class="modal fade" id="reactivarRapido{{ cel.id }}" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header bg-success text-white">
+                                <h5 class="modal-title">Reingresar {{ cel.modelo }}</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('reactivar_celular', id=cel.id) }}">
+                                {{ form.csrf_token }}
+                                <div class="modal-body">
+                                    <div class="alert alert-info">
+                                        <strong>IMEI:</strong> {{ cel.imei1 }}<br>
+                                        <strong>Ingresos anteriores:</strong> {{ cel.veces_ingresado or 1 }}
+                                    </div>
+                                    <input type="hidden" name="modelo" value="{{ cel.modelo }}">
+                                    <input type="hidden" name="gb" value="{{ cel.gb }}">
+                                    <input type="hidden" name="color" value="{{ cel.color or '' }}">
+                                    <div class="mb-3">
+                                        <label class="form-label">Nuevo Precio de Compra <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" name="precio_compra" required placeholder="Ej: 800.000">
+                                    </div>
+                                    <input type="hidden" name="precio_cliente" value="{{ cel.precio_cliente }}">
+                                    <input type="hidden" name="precio_patinado" value="{{ cel.precio_patinado }}">
+                                    <input type="hidden" name="estado" value="Patinado">
+                                    <div class="mb-3">
+                                        <label class="form-label">Notas</label>
+                                        <textarea class="form-control" name="notas" rows="2" placeholder="Ej: Cliente lo trajo de vuelta por retoma">Reingreso</textarea>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                    <button type="submit" class="btn btn-success">Confirmar Reingreso</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if cel.en_stock %}
                 <!-- Modal Editar -->
                 <div class="modal fade" id="editarModal{{ cel.id }}" tabindex="-1" aria-labelledby="editarModalLabel{{ cel.id }}" aria-hidden="true">
                     <div class="modal-dialog modal-lg">
@@ -713,6 +865,7 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}
                 {% endfor %}
             {% else %}
                 <tr><td colspan="9" class="text-center py-4">No hay celulares en stock. <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">¡Agrega uno ahora!</button></td></tr>
@@ -830,6 +983,79 @@
 
 <!-- Script para formatear pesos automáticamente en inputs -->
 <script>
+    // === VERIFICAR IMEI EXISTENTE ===
+    let verificandoImei = false;
+    const imei1Input = document.getElementById('imei1');
+    
+    if (imei1Input) {
+        imei1Input.addEventListener('blur', function() {
+            const imei = this.value.trim();
+            if (imei.length >= 15 && !verificandoImei) {
+                verificandoImei = true;
+                verificarImeiExistente(imei);
+            }
+        });
+    }
+    
+    function verificarImeiExistente(imei) {
+        fetch(`/verificar_imei/${imei}`)
+            .then(response => response.json())
+            .then(data => {
+                verificandoImei = false;
+                if (data.existe) {
+                    if (data.en_stock) {
+                        // El celular ya está en stock, mostrar error
+                        alert('⚠️ Este IMEI ya está registrado y está actualmente en stock. No se puede agregar duplicado.');
+                        imei1Input.value = '';
+                        imei1Input.focus();
+                    } else {
+                        // El celular estuvo antes pero ya fue vendido, ofrecer reactivar
+                        mostrarModalReactivar(data);
+                    }
+                }
+            })
+            .catch(err => {
+                verificandoImei = false;
+                console.error('Error verificando IMEI:', err);
+            });
+    }
+    
+    function mostrarModalReactivar(data) {
+        // Cerrar modal de agregar si está abierto
+        const addModal = bootstrap.Modal.getInstance(document.getElementById('addModal'));
+        if (addModal) addModal.hide();
+        
+        // Llenar datos del modal de reactivación
+        document.getElementById('reactivar_modelo').value = data.modelo || '';
+        document.getElementById('reactivar_gb').value = data.gb || '128';
+        document.getElementById('reactivar_color').value = data.color || '';
+        document.getElementById('reactivar_precio_compra').value = '';
+        document.getElementById('reactivar_precio_cliente').value = formatearPesos((data.precio_cliente || 0).toString());
+        document.getElementById('reactivar_precio_patinado').value = formatearPesos((data.precio_patinado || 0).toString());
+        document.getElementById('reactivar_estado').value = 'Patinado';
+        document.getElementById('reactivar_notas').value = 'Reingreso - ' + (data.notas || '');
+        
+        // Info del celular
+        const infoText = `Modelo: ${data.modelo} | GB: ${data.gb} | Ingresos anteriores: ${data.veces_ingresado}`;
+        document.getElementById('reactivarInfo').textContent = infoText;
+        
+        // Configurar action del form
+        document.getElementById('reactivarForm').action = `/reactivar_celular/${data.id}`;
+        
+        // Aplicar formato pesos a los inputs del modal
+        document.querySelectorAll('#reactivarModal .precio-input').forEach(input => {
+            input.addEventListener('input', function() {
+                this.value = formatearPesos(this.value);
+            });
+        });
+        
+        // Mostrar modal de reactivación
+        setTimeout(() => {
+            const reactivarModal = new bootstrap.Modal(document.getElementById('reactivarModal'));
+            reactivarModal.show();
+        }, 300);
+    }
+
     function cargarDatosEditar(celularId) {
         fetch(`/editar/${celularId}`)
             .then(response => response.json())

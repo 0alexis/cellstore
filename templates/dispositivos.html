@@ -99,6 +99,92 @@
     </div>
 </div>
 
+<!-- Modal Editar Dispositivo (AJAX) -->
+<div class="modal fade" id="editModalAjax" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Dispositivo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-id">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Tipo <span class="text-danger">*</span></label>
+                        <select class="form-select" id="edit-tipo">
+                            <option value="PC">PC</option>
+                            <option value="Laptop">Laptop</option>
+                            <option value="Tablet">Tablet</option>
+                            <option value="iPad">iPad</option>
+                            <option value="Cámara">Cámara</option>
+                            <option value="Monitor">Monitor</option>
+                            <option value="Teclado">Teclado</option>
+                            <option value="Mouse">Mouse</option>
+                            <option value="Auriculares">Auriculares</option>
+                            <option value="Smartwatch">Smartwatch</option>
+                            <option value="Impresora">Impresora</option>
+                            <option value="Router">Router</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Marca <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit-marca">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Modelo <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit-modelo">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Serial/Código</label>
+                        <input type="text" class="form-control" id="edit-serial">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Precio Compra <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit-precio_compra">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Precio Venta <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit-precio_venta">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Cantidad <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="edit-cantidad" min="1">
+                    </div>
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label">Estado <span class="text-danger">*</span></label>
+                        <select class="form-select" id="edit-estado">
+                            <option value="local">Local</option>
+                            <option value="Patinado">Patinado</option>
+                            <option value="Vendido">Vendido</option>
+                            <option value="Servicio Técnico">Servicio Técnico</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Especificaciones</label>
+                    <textarea class="form-control" id="edit-especificaciones" rows="2"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-control" id="edit-notas" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="btn-guardar-edicion">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal Agregar Dispositivo -->
 <div class="modal fade" id="addModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -198,42 +284,38 @@
                     <td><strong>{{ d.precio_compra|pesos }}</strong></td>
                     <td><strong>{{ d.precio_venta|pesos }}</strong></td>
                     <td>
-                        <form method="POST" action="{{ url_for('cambiar_estado_dispositivo', id=d.id) }}" style="display: inline;">
-                            <select class="form-select form-select-sm estado-select
+                        <div class="estado-container" data-id="{{ d.id }}">
+                            <select class="form-select form-select-sm estado-select-ajax
                                 {% if d.estado == 'Patinado' %}bg-danger text-white
                                 {% elif d.estado == 'local' %}bg-secondary text-white
                                 {% elif d.estado == 'Vendido' %}bg-success text-white
                                 {% elif d.estado == 'Servicio Técnico' %}bg-warning text-dark
                                 {% endif %}" 
-                                name="nuevo_estado" onchange="handleEstadoChange(this);">
-                                <option value="local" class="bg-secondary text-white" {% if d.estado == 'local' %}selected{% endif %}>Local</option>
-                                <option value="Patinado" class="bg-danger text-white" {% if d.estado == 'Patinado' %}selected{% endif %}>Patinado</option>
-                                <option value="Vendido" class="bg-success text-white" {% if d.estado == 'Vendido' %}selected{% endif %}>Vendido</option>
-                                <option value="Servicio Técnico" class="bg-warning text-dark" {% if d.estado == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
+                                data-id="{{ d.id }}" data-estado-original="{{ d.estado }}">
+                                <option value="local" {% if d.estado == 'local' %}selected{% endif %}>Local</option>
+                                <option value="Patinado" {% if d.estado == 'Patinado' %}selected{% endif %}>Patinado</option>
+                                <option value="Vendido" {% if d.estado == 'Vendido' %}selected{% endif %}>Vendido</option>
+                                <option value="Servicio Técnico" {% if d.estado == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
                             </select>
-                            <select class="form-select form-select-sm mt-1 tercero-selector" name="tercero_id" {% if d.estado != 'Patinado' %}style="display:none"{% endif %}>
+                            <select class="form-select form-select-sm mt-1 tercero-selector-ajax" data-id="{{ d.id }}" {% if d.estado != 'Patinado' %}style="display:none"{% endif %}>
                                 <option value="">Selecciona tercero</option>
                                 {% for t in terceros %}
                                     <option value="{{ t.id }}" {% if d.tercero_id == t.id %}selected{% endif %}>{{ t.local }} - {{ t.nombre }}</option>
                                 {% endfor %}
                             </select>
-                        </form>
+                        </div>
                     </td>
                     <td>
-                        <div class="btn-group btn-group-sm d-flex flex-wrap gap-2" role="group">
-                            <a href="{{ url_for('editar_dispositivo', id=d.id) }}" class="btn btn-outline-warning">Editar</a>
+                        <div class="btn-group btn-group-sm d-flex flex-wrap gap-2 acciones-container" role="group" data-id="{{ d.id }}">
+                            <button type="button" class="btn btn-outline-warning btn-editar-ajax" data-id="{{ d.id }}">Editar</button>
                             {% if d.estado != 'Vendido' %}
-                                <form method="POST" action="{{ url_for('vender_dispositivo', id=d.id) }}" style="display: inline;">
-                                    <button type="submit" class="btn btn-outline-success">Vendido</button>
-                                </form>
+                                <button type="button" class="btn btn-outline-success btn-vender-ajax" data-id="{{ d.id }}">Vendido</button>
                                 <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#retomaModalDispo{{ d.id }}">Retoma</button>
                             {% else %}
-                                <span class="badge bg-success align-self-center">Vendido</span>
+                                <span class="badge bg-success align-self-center vendido-badge">Vendido</span>
                             {% endif %}
                             {% if user.role == 'Admin' %}
-                                <form method="POST" action="{{ url_for('eliminar_dispositivo', id=d.id) }}" style="display: inline;">
-                                    <button type="submit" class="btn btn-outline-danger" onclick="return confirm('¿Eliminar este dispositivo?')">Eliminar</button>
-                                </form>
+                                <button type="button" class="btn btn-outline-danger btn-eliminar-ajax" data-id="{{ d.id }}">Eliminar</button>
                             {% endif %}
                         </div>
                     </td>
@@ -248,6 +330,10 @@
                             </div>
                             <form method="POST" action="{{ url_for('retoma_dispositivo', id=d.id) }}">
                                 <input type="hidden" name="total_venta" value="{{ (d.precio_venta * d.cantidad)|float }}">
+                                <input type="hidden" name="search" value="{{ search }}">
+                                <input type="hidden" name="tipo" value="{{ tipo_filtro }}">
+                                <input type="hidden" name="estado" value="{{ estado_filtro }}">
+                                <input type="hidden" name="orden" value="{{ orden }}">
                                 <div class="modal-body">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <h6 class="mb-0">Ítems recibidos</h6>
@@ -544,29 +630,431 @@
         }
     }
 
-    function handleEstadoChange(selectEl) {
-        toggleTerceroSelect(selectEl);
-        const form = selectEl.form;
-        const terceroSelect = form ? form.querySelector('.tercero-selector') : null;
-        if (selectEl.value === 'Patinado') {
-            if (!terceroSelect || !terceroSelect.value) {
-                if (terceroSelect) terceroSelect.focus();
-                return; // No enviamos hasta elegir tercero
-            }
+    // === FUNCIONES AJAX PARA DISPOSITIVOS ===
+    
+    // Mostrar notificación toast
+    function showToast(message, type = 'success') {
+        // Crear toast container si no existe
+        let toastContainer = document.getElementById('toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'toast-container';
+            toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999;';
+            document.body.appendChild(toastContainer);
         }
-        form.submit();
+        
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show`;
+        toast.style.cssText = 'min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+        toast.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        toastContainer.appendChild(toast);
+        
+        // Auto-remove después de 4 segundos
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 150);
+        }, 4000);
     }
-
-    document.querySelectorAll('.tercero-selector').forEach(sel => {
-        sel.addEventListener('change', function () {
-            const estadoSelect = this.closest('form').querySelector('.estado-select');
-            if (estadoSelect && estadoSelect.value === 'Patinado' && this.value) {
-                this.form.submit();
+    
+    // Actualizar clases de color del select de estado
+    function updateEstadoSelectColor(selectEl, estado) {
+        selectEl.classList.remove('bg-danger', 'bg-secondary', 'bg-success', 'bg-warning', 'text-white', 'text-dark');
+        if (estado === 'Patinado') {
+            selectEl.classList.add('bg-danger', 'text-white');
+        } else if (estado === 'local') {
+            selectEl.classList.add('bg-secondary', 'text-white');
+        } else if (estado === 'Vendido') {
+            selectEl.classList.add('bg-success', 'text-white');
+        } else if (estado === 'Servicio Técnico') {
+            selectEl.classList.add('bg-warning', 'text-dark');
+        }
+    }
+    
+    // Cambiar estado via AJAX
+    async function cambiarEstadoAjax(id, nuevoEstado, terceroId = null) {
+        try {
+            const response = await fetch(`/api/dispositivo/cambiar_estado/${id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    nuevo_estado: nuevoEstado,
+                    tercero_id: terceroId
+                }),
+                credentials: 'same-origin'
+            });
+            
+            // Verificar si fue redirigido al login
+            if (response.redirected) {
+                showToast('Sesión expirada. Recarga la página.', 'error');
+                return;
+            }
+            
+            // Verificar si la respuesta es HTML (redirect a login)
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                showToast('Error de autenticación', 'error');
+                const selectEl = document.querySelector(`.estado-select-ajax[data-id="${id}"]`);
+                if (selectEl) selectEl.value = selectEl.dataset.estadoOriginal;
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast(data.message, 'success');
+                
+                // Actualizar UI
+                const selectEl = document.querySelector(`.estado-select-ajax[data-id="${id}"]`);
+                if (selectEl) {
+                    selectEl.dataset.estadoOriginal = nuevoEstado;
+                    updateEstadoSelectColor(selectEl, nuevoEstado);
+                }
+                
+                // Si es vendido, actualizar los botones de acción
+                if (nuevoEstado === 'Vendido') {
+                    const accionesContainer = document.querySelector(`.acciones-container[data-id="${id}"]`);
+                    if (accionesContainer) {
+                        const btnVender = accionesContainer.querySelector('.btn-vender-ajax');
+                        const btnRetoma = accionesContainer.querySelector('[data-bs-target^="#retomaModalDispo"]');
+                        if (btnVender) btnVender.remove();
+                        if (btnRetoma) btnRetoma.remove();
+                        
+                        // Agregar badge de vendido si no existe
+                        if (!accionesContainer.querySelector('.vendido-badge')) {
+                            const badge = document.createElement('span');
+                            badge.className = 'badge bg-success align-self-center vendido-badge';
+                            badge.textContent = 'Vendido';
+                            accionesContainer.insertBefore(badge, accionesContainer.querySelector('.btn-eliminar-ajax'));
+                        }
+                    }
+                }
+            } else {
+                showToast(data.error || 'Error al cambiar estado', 'error');
+                // Revertir select al estado original
+                const selectEl = document.querySelector(`.estado-select-ajax[data-id="${id}"]`);
+                if (selectEl) {
+                    selectEl.value = selectEl.dataset.estadoOriginal;
+                }
+            }
+        } catch (error) {
+            showToast('Error de conexión', 'error');
+            console.error(error);
+        }
+    }
+    
+    // Vender dispositivo via AJAX
+    async function venderDispositivoAjax(id) {
+        if (!confirm('¿Marcar este dispositivo como vendido?')) return;
+        
+        try {
+            const response = await fetch(`/api/dispositivo/vender/${id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin'
+            });
+            
+            // Verificar si fue redirigido al login
+            if (response.redirected) {
+                showToast('Sesión expirada. Recarga la página.', 'error');
+                return;
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                showToast('Error de autenticación', 'error');
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast(data.message, 'success');
+                
+                // Actualizar el select de estado
+                const selectEl = document.querySelector(`.estado-select-ajax[data-id="${id}"]`);
+                if (selectEl) {
+                    selectEl.value = 'Vendido';
+                    selectEl.dataset.estadoOriginal = 'Vendido';
+                    updateEstadoSelectColor(selectEl, 'Vendido');
+                }
+                
+                // Actualizar botones de acción
+                const accionesContainer = document.querySelector(`.acciones-container[data-id="${id}"]`);
+                if (accionesContainer) {
+                    const btnVender = accionesContainer.querySelector('.btn-vender-ajax');
+                    const btnRetoma = accionesContainer.querySelector('[data-bs-target^="#retomaModalDispo"]');
+                    if (btnVender) btnVender.remove();
+                    if (btnRetoma) btnRetoma.remove();
+                    
+                    if (!accionesContainer.querySelector('.vendido-badge')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'badge bg-success align-self-center vendido-badge';
+                        badge.textContent = 'Vendido';
+                        accionesContainer.insertBefore(badge, accionesContainer.querySelector('.btn-eliminar-ajax'));
+                    }
+                }
+            } else {
+                showToast(data.error || 'Error al vender', 'error');
+            }
+        } catch (error) {
+            showToast('Error de conexión', 'error');
+            console.error(error);
+        }
+    }
+    
+    // Eliminar dispositivo via AJAX
+    async function eliminarDispositivoAjax(id) {
+        if (!confirm('¿Eliminar este dispositivo?')) return;
+        
+        try {
+            const response = await fetch(`/api/dispositivo/eliminar/${id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin'
+            });
+            
+            // Verificar si fue redirigido al login
+            if (response.redirected) {
+                showToast('Sesión expirada. Recarga la página.', 'error');
+                return;
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                showToast('Error de autenticación', 'error');
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast(data.message, 'success');
+                
+                // Remover la fila de la tabla
+                const row = document.querySelector(`.estado-container[data-id="${id}"]`)?.closest('tr');
+                if (row) {
+                    row.style.transition = 'opacity 0.3s';
+                    row.style.opacity = '0';
+                    setTimeout(() => row.remove(), 300);
+                }
+            } else {
+                showToast(data.error || 'Error al eliminar', 'error');
+            }
+        } catch (error) {
+            showToast('Error de conexión', 'error');
+            console.error(error);
+        }
+    }
+    
+    // Event listeners para AJAX
+    document.querySelectorAll('.estado-select-ajax').forEach(select => {
+        select.addEventListener('change', function() {
+            const id = this.dataset.id;
+            const nuevoEstado = this.value;
+            const container = this.closest('.estado-container');
+            const terceroSelect = container?.querySelector('.tercero-selector-ajax');
+            
+            // Mostrar/ocultar selector de tercero
+            if (terceroSelect) {
+                if (nuevoEstado === 'Patinado') {
+                    terceroSelect.style.display = 'block';
+                    terceroSelect.focus();
+                    return; // No enviar hasta seleccionar tercero
+                } else {
+                    terceroSelect.style.display = 'none';
+                    terceroSelect.value = '';
+                }
+            }
+            
+            cambiarEstadoAjax(id, nuevoEstado);
+        });
+    });
+    
+    document.querySelectorAll('.tercero-selector-ajax').forEach(select => {
+        select.addEventListener('change', function() {
+            const id = this.dataset.id;
+            const terceroId = this.value;
+            const container = this.closest('.estado-container');
+            const estadoSelect = container?.querySelector('.estado-select-ajax');
+            
+            if (estadoSelect?.value === 'Patinado' && terceroId) {
+                cambiarEstadoAjax(id, 'Patinado', terceroId);
             }
         });
     });
-
-    document.querySelectorAll('.estado-select').forEach(toggleTerceroSelect);
+    
+    document.querySelectorAll('.btn-vender-ajax').forEach(btn => {
+        btn.addEventListener('click', function() {
+            venderDispositivoAjax(this.dataset.id);
+        });
+    });
+    
+    document.querySelectorAll('.btn-eliminar-ajax').forEach(btn => {
+        btn.addEventListener('click', function() {
+            eliminarDispositivoAjax(this.dataset.id);
+        });
+    });
+    
+    // === FUNCIONES PARA EDICIÓN EN MODAL ===
+    const editModal = new bootstrap.Modal(document.getElementById('editModalAjax'));
+    
+    // Formatear número como pesos
+    function formatearPesosEdit(num) {
+        if (!num && num !== 0) return '';
+        const entero = Math.floor(Number(num)).toString();
+        let formateado = "";
+        for (let i = entero.length - 1, count = 0; i >= 0; i--, count++) {
+            if (count > 0 && count % 3 === 0) formateado = "." + formateado;
+            formateado = entero.charAt(i) + formateado;
+        }
+        return formateado;
+    }
+    
+    // Cargar datos del dispositivo en el modal
+    async function cargarDispositivoParaEditar(id) {
+        try {
+            const response = await fetch(`/api/dispositivo/${id}`, {
+                credentials: 'same-origin'
+            });
+            
+            if (response.redirected) {
+                showToast('Sesión expirada', 'error');
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                const d = data.dispositivo;
+                document.getElementById('edit-id').value = d.id;
+                document.getElementById('edit-tipo').value = d.tipo;
+                document.getElementById('edit-marca').value = d.marca || '';
+                document.getElementById('edit-modelo').value = d.modelo || '';
+                document.getElementById('edit-serial').value = d.serial || '';
+                document.getElementById('edit-precio_compra').value = formatearPesosEdit(d.precio_compra);
+                document.getElementById('edit-precio_venta').value = formatearPesosEdit(d.precio_venta);
+                document.getElementById('edit-cantidad').value = d.cantidad || 1;
+                document.getElementById('edit-estado').value = d.estado;
+                document.getElementById('edit-especificaciones').value = d.especificaciones || '';
+                document.getElementById('edit-notas').value = d.notas || '';
+                
+                editModal.show();
+            } else {
+                showToast(data.error || 'Error al cargar dispositivo', 'error');
+            }
+        } catch (error) {
+            showToast('Error de conexión', 'error');
+            console.error(error);
+        }
+    }
+    
+    // Guardar edición via AJAX
+    async function guardarEdicionAjax() {
+        const id = document.getElementById('edit-id').value;
+        const datos = {
+            tipo: document.getElementById('edit-tipo').value,
+            marca: document.getElementById('edit-marca').value,
+            modelo: document.getElementById('edit-modelo').value,
+            serial: document.getElementById('edit-serial').value,
+            precio_compra: document.getElementById('edit-precio_compra').value,
+            precio_venta: document.getElementById('edit-precio_venta').value,
+            cantidad: document.getElementById('edit-cantidad').value,
+            estado: document.getElementById('edit-estado').value,
+            especificaciones: document.getElementById('edit-especificaciones').value,
+            notas: document.getElementById('edit-notas').value
+        };
+        
+        try {
+            const response = await fetch(`/api/dispositivo/editar/${id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(datos),
+                credentials: 'same-origin'
+            });
+            
+            if (response.redirected) {
+                showToast('Sesión expirada', 'error');
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast(data.message, 'success');
+                editModal.hide();
+                
+                // Actualizar la fila en la tabla
+                const row = document.querySelector(`.estado-container[data-id="${id}"]`)?.closest('tr');
+                if (row && data.dispositivo) {
+                    const d = data.dispositivo;
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length >= 8) {
+                        cells[0].innerHTML = `<span class="badge bg-info">${d.tipo}</span>`;
+                        cells[1].textContent = d.marca;
+                        cells[2].textContent = d.modelo;
+                        cells[3].textContent = d.serial || '-';
+                        cells[4].textContent = d.cantidad;
+                        cells[5].innerHTML = `<strong>${formatearPesosConSigno(d.precio_compra)}</strong>`;
+                        cells[6].innerHTML = `<strong>${formatearPesosConSigno(d.precio_venta)}</strong>`;
+                        
+                        // Actualizar select de estado
+                        const estadoSelect = row.querySelector('.estado-select-ajax');
+                        if (estadoSelect) {
+                            estadoSelect.value = d.estado;
+                            estadoSelect.dataset.estadoOriginal = d.estado;
+                            updateEstadoSelectColor(estadoSelect, d.estado);
+                        }
+                    }
+                }
+            } else {
+                showToast(data.error || 'Error al guardar', 'error');
+            }
+        } catch (error) {
+            showToast('Error de conexión', 'error');
+            console.error(error);
+        }
+    }
+    
+    // Función para formatear pesos con signo $
+    function formatearPesosConSigno(num) {
+        if (!num && num !== 0) return '$0';
+        const entero = Math.floor(Number(num)).toString();
+        let formateado = "";
+        for (let i = entero.length - 1, count = 0; i >= 0; i--, count++) {
+            if (count > 0 && count % 3 === 0) formateado = "." + formateado;
+            formateado = entero.charAt(i) + formateado;
+        }
+        return '$' + formateado;
+    }
+    
+    // Event listeners para edición
+    document.querySelectorAll('.btn-editar-ajax').forEach(btn => {
+        btn.addEventListener('click', function() {
+            cargarDispositivoParaEditar(this.dataset.id);
+        });
+    });
+    
+    document.getElementById('btn-guardar-edicion').addEventListener('click', guardarEdicionAjax);
+    
+    // Formatear precios en modal de edición mientras se escribe
+    ['edit-precio_compra', 'edit-precio_venta'].forEach(id => {
+        document.getElementById(id).addEventListener('input', function() {
+            if (this.value) {
+                this.value = formatearPesos(this.value);
+            }
+        });
+    });
 
     // --- Retoma Dispositivo (similar al de celulares) ---
     function toggleItemTypeDispo(selectEl) {

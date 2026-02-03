@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -60,6 +60,13 @@ def limpiar_pesos(valor):
 # Login Manager
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
+# Handler personalizado para peticiones AJAX que requieren login
+@login_manager.unauthorized_handler
+def unauthorized():
+    if request.headers.get('Content-Type') == 'application/json' or request.path.startswith('/api/'):
+        return jsonify({'success': False, 'error': 'Sesión expirada'}), 401
+    return redirect(url_for('login'))
 
 # Modelo User (para perfiles y roles)
 class User(UserMixin, db.Model):
@@ -128,6 +135,7 @@ class Celular(db.Model):
     fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
     tercero_id = db.Column(db.Integer, db.ForeignKey('tercero.id'), nullable=True)
     patinado_en = db.Column(db.DateTime, nullable=True)
+    veces_ingresado = db.Column(db.Integer, default=1)  # Cuántas veces ha entrado al inventario
 
     tercero = db.relationship('Tercero', backref='celulares')
 
@@ -304,6 +312,11 @@ with app.app_context():
                 with db.engine.connect() as conn:
                     conn.execute(text('ALTER TABLE celular ADD COLUMN color VARCHAR(30) NULL'))
                     conn.commit()
+            if 'veces_ingresado' not in columnas_celular:
+                print("Migrando tabla celular: agregando columna veces_ingresado...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE celular ADD COLUMN veces_ingresado INTEGER DEFAULT 1'))
+                    conn.commit()
         except Exception as mig_e:
             print(f"Nota migración celular: {mig_e}")
 
@@ -367,12 +380,17 @@ def caja():
     tipo_filtro = request.args.get('tipo', '')
     fecha_desde = request.args.get('fecha_desde', '')
     fecha_hasta = request.args.get('fecha_hasta', '')
+    buscar_imei = request.args.get('imei', '').strip()
     
     # Construcción de la consulta
     query = Transaccion.query.order_by(Transaccion.fecha.desc())
     
     if tipo_filtro:
         query = query.filter_by(tipo=tipo_filtro)
+    
+    # Búsqueda por IMEI en la descripción
+    if buscar_imei:
+        query = query.filter(Transaccion.descripcion.ilike(f'%{buscar_imei}%'))
     
     if fecha_desde:
         from datetime import datetime as dt
@@ -413,7 +431,7 @@ def caja():
     ganancia_neta_total_acumulada = sum((t.ganancia_neta or 0) for t in ventas_todas)
     
     return render_template('caja.html', transacciones=transacciones, tipo_filtro=tipo_filtro, 
-                          fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, 
+                          fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, buscar_imei=buscar_imei,
                           total_monto=total_monto, total_ganancia_neta=total_ganancia_neta,
                           cantidad_transacciones=cantidad_transacciones, 
                           cantidad_celulares=cantidad_celulares, cantidad_dispositivos=cantidad_dispositivos,
@@ -551,10 +569,22 @@ def editar_dispositivo(id):
     dispositivo = Dispositivo.query.get_or_404(id)
     form = DispositivoForm()
     
+    # Preservar parámetros de filtro (de GET o de POST)
+    if request.method == 'POST':
+        search = request.form.get('filter_search', '')
+        tipo_filtro = request.form.get('filter_tipo', '')
+        estado_filtro = request.form.get('filter_estado', '')
+        orden = request.form.get('filter_orden', 'ultimos')
+    else:
+        search = request.args.get('search', '')
+        tipo_filtro = request.args.get('tipo', '')
+        estado_filtro = request.args.get('estado', '')
+        orden = request.args.get('orden', 'ultimos')
+    
     if form.validate_on_submit():
         if form.tipo.data == 'Otro' and not (form.tipo_otro.data and form.tipo_otro.data.strip()):
             flash('Especifica el tipo cuando seleccionas "Otro".', 'error')
-            return redirect(url_for('editar_dispositivo', id=id))
+            return redirect(url_for('editar_dispositivo', id=id, search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
         try:
             tipo_val = form.tipo_otro.data.strip() if form.tipo.data == 'Otro' and form.tipo_otro.data else form.tipo.data
             dispositivo.tipo = tipo_val
@@ -570,7 +600,7 @@ def editar_dispositivo(id):
             dispositivo.plan_retoma = bool(form.plan_retoma.data)
             db.session.commit()
             flash('Dispositivo actualizado.', 'success')
-            return redirect(url_for('dispositivos'))
+            return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
         except Exception as e:
             db.session.rollback()
             flash(f'Error: {str(e)}', 'error')
@@ -593,7 +623,8 @@ def editar_dispositivo(id):
         form.notas.data = dispositivo.notas
         form.plan_retoma.data = dispositivo.plan_retoma
     
-    return render_template('editar_dispositivo.html', form=form, dispositivo=dispositivo, user=current_user)
+    return render_template('editar_dispositivo.html', form=form, dispositivo=dispositivo, user=current_user,
+                          search=search, tipo_filtro=tipo_filtro, estado_filtro=estado_filtro, orden=orden)
 
 # Cambiar estado de dispositivo (similar a celulares)
 @app.route('/dispositivo/cambiar_estado/<int:id>', methods=['POST'])
@@ -642,6 +673,160 @@ def cambiar_estado_dispositivo(id):
     db.session.commit()
     flash(f'¡Cambio de estado exitoso! {dispositivo.tipo} {dispositivo.modelo} ahora es {nuevo_estado}.', 'success')
     return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
+
+# === RUTAS API AJAX PARA DISPOSITIVOS ===
+@app.route('/api/dispositivo/cambiar_estado/<int:id>', methods=['POST'])
+@login_required
+def api_cambiar_estado_dispositivo(id):
+    if current_user.role != 'Admin':
+        return jsonify({'success': False, 'error': 'Acceso denegado'}), 403
+    
+    dispositivo = Dispositivo.query.get_or_404(id)
+    data = request.get_json() or {}
+    nuevo_estado = data.get('nuevo_estado')
+    tercero_id = data.get('tercero_id')
+    
+    if nuevo_estado not in ['local', 'Patinado', 'Vendido', 'Servicio Técnico']:
+        return jsonify({'success': False, 'error': 'Estado inválido'}), 400
+    
+    if nuevo_estado == 'Patinado':
+        if not tercero_id:
+            return jsonify({'success': False, 'error': 'Selecciona a quién se patina el dispositivo'}), 400
+        tercero = Tercero.query.filter_by(id=int(tercero_id), activo=True).first()
+        if not tercero:
+            return jsonify({'success': False, 'error': 'Tercero no encontrado o inactivo'}), 400
+        dispositivo.tercero_id = tercero.id
+    else:
+        dispositivo.tercero_id = None
+    
+    dispositivo.estado = nuevo_estado
+    dispositivo.en_stock = (nuevo_estado != 'Vendido')
+    db.session.commit()
+    
+    return jsonify({
+        'success': True, 
+        'message': f'{dispositivo.tipo} {dispositivo.modelo} ahora es {nuevo_estado}',
+        'nuevo_estado': nuevo_estado
+    })
+
+@app.route('/api/dispositivo/vender/<int:id>', methods=['POST'])
+@login_required
+def api_vender_dispositivo(id):
+    dispositivo = Dispositivo.query.get_or_404(id)
+    
+    try:
+        precio_venta = dispositivo.precio_venta * dispositivo.cantidad
+        precio_compra = dispositivo.precio_compra * dispositivo.cantidad
+        ganancia_neta = precio_venta - precio_compra
+        
+        transaccion = Transaccion(
+            tipo='Venta Dispositivo',
+            monto=precio_venta,
+            ganancia_neta=ganancia_neta,
+            descripcion=f"{dispositivo.tipo} {dispositivo.marca} {dispositivo.modelo} (x{dispositivo.cantidad})"
+        )
+        
+        dispositivo.estado = 'Vendido'
+        dispositivo.en_stock = False
+        db.session.add(transaccion)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'¡{dispositivo.tipo} {dispositivo.modelo} vendido! Ganancia: ${ganancia_neta:,.0f}'.replace(',', '.')
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/dispositivo/eliminar/<int:id>', methods=['POST'])
+@login_required
+def api_eliminar_dispositivo(id):
+    if current_user.role != 'Admin':
+        return jsonify({'success': False, 'error': 'Acceso denegado'}), 403
+    
+    dispositivo = Dispositivo.query.get_or_404(id)
+    
+    try:
+        nombre = f"{dispositivo.tipo} {dispositivo.modelo}"
+        db.session.delete(dispositivo)
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'{nombre} eliminado'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/dispositivo/<int:id>', methods=['GET'])
+@login_required
+def api_obtener_dispositivo(id):
+    dispositivo = Dispositivo.query.get_or_404(id)
+    return jsonify({
+        'success': True,
+        'dispositivo': {
+            'id': dispositivo.id,
+            'tipo': dispositivo.tipo,
+            'marca': dispositivo.marca,
+            'modelo': dispositivo.modelo,
+            'serial': dispositivo.serial,
+            'precio_compra': dispositivo.precio_compra,
+            'precio_venta': dispositivo.precio_venta,
+            'cantidad': dispositivo.cantidad,
+            'estado': dispositivo.estado,
+            'especificaciones': dispositivo.especificaciones,
+            'notas': dispositivo.notas,
+            'plan_retoma': dispositivo.plan_retoma
+        }
+    })
+
+@app.route('/api/dispositivo/editar/<int:id>', methods=['POST'])
+@login_required
+def api_editar_dispositivo(id):
+    dispositivo = Dispositivo.query.get_or_404(id)
+    data = request.get_json() or {}
+    
+    try:
+        if 'tipo' in data:
+            dispositivo.tipo = data['tipo']
+        if 'marca' in data:
+            dispositivo.marca = data['marca']
+        if 'modelo' in data:
+            dispositivo.modelo = data['modelo']
+        if 'serial' in data:
+            dispositivo.serial = data['serial']
+        if 'precio_compra' in data:
+            dispositivo.precio_compra = limpiar_pesos(data['precio_compra'])
+        if 'precio_venta' in data:
+            dispositivo.precio_venta = limpiar_pesos(data['precio_venta'])
+        if 'cantidad' in data:
+            dispositivo.cantidad = int(data['cantidad'])
+        if 'estado' in data:
+            dispositivo.estado = data['estado']
+        if 'especificaciones' in data:
+            dispositivo.especificaciones = data['especificaciones']
+        if 'notas' in data:
+            dispositivo.notas = data['notas']
+        if 'plan_retoma' in data:
+            dispositivo.plan_retoma = bool(data['plan_retoma'])
+        
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': f'{dispositivo.tipo} {dispositivo.modelo} actualizado',
+            'dispositivo': {
+                'id': dispositivo.id,
+                'tipo': dispositivo.tipo,
+                'marca': dispositivo.marca,
+                'modelo': dispositivo.modelo,
+                'serial': dispositivo.serial,
+                'precio_compra': dispositivo.precio_compra,
+                'precio_venta': dispositivo.precio_venta,
+                'cantidad': dispositivo.cantidad,
+                'estado': dispositivo.estado
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/dispositivo/eliminar/<int:id>', methods=['POST'])
 @login_required
@@ -709,6 +894,12 @@ def vender_dispositivo(id):
 @login_required
 def retoma_dispositivo(id):
     dispositivo = Dispositivo.query.get_or_404(id)
+    
+    # Preservar parámetros de filtro
+    search = request.form.get('search', '')
+    tipo_filtro = request.form.get('tipo', '')
+    estado_filtro = request.form.get('estado', '')
+    orden = request.form.get('orden', 'ultimos')
 
     total_venta = float(request.form.get('total_venta', dispositivo.precio_venta * dispositivo.cantidad))
     cash_recibido = limpiar_pesos(request.form.get('cash_recibido', 0))
@@ -737,7 +928,7 @@ def retoma_dispositivo(id):
 
     if max_items == 0:
         flash('Debes agregar al menos un ítem recibido en la retoma.', 'error')
-        return redirect(url_for('dispositivos'))
+        return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
 
     def pad_list(lst, length, fill=None):
         return list(lst) + [fill] * max(0, length - len(lst))
@@ -847,7 +1038,72 @@ def retoma_dispositivo(id):
         db.session.commit()
 
     flash(f'¡Plan Retoma registrado para {dispositivo.tipo} {dispositivo.modelo}! Saldo pendiente: ${saldo_pendiente if saldo_pendiente > 0 else "Ninguno"}', 'success')
-    return redirect(url_for('dispositivos'))
+    return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
+
+
+# === VERIFICAR IMEI Y REACTIVAR CELULAR ===
+@app.route('/verificar_imei/<imei>')
+@login_required
+def verificar_imei(imei):
+    """Verifica si un IMEI ya existe en la base de datos"""
+    from flask import jsonify
+    celular = Celular.query.filter_by(imei1=imei).first()
+    if celular:
+        return jsonify({
+            'existe': True,
+            'en_stock': celular.en_stock,
+            'id': celular.id,
+            'modelo': celular.modelo,
+            'color': celular.color,
+            'gb': celular.gb,
+            'precio_compra': celular.precio_compra,
+            'precio_cliente': celular.precio_cliente,
+            'precio_patinado': celular.precio_patinado,
+            'estado': celular.estado,
+            'notas': celular.notas,
+            'veces_ingresado': celular.veces_ingresado or 1,
+            'fecha_entrada': celular.fecha_entrada.strftime('%d/%m/%Y') if celular.fecha_entrada else None
+        })
+    return jsonify({'existe': False})
+
+
+@app.route('/reactivar_celular/<int:id>', methods=['POST'])
+@login_required
+def reactivar_celular(id):
+    """Reactiva un celular que ya estuvo en inventario (vendido anteriormente)"""
+    if current_user.role != 'Admin':
+        flash('Solo administradores pueden reactivar celulares.', 'error')
+        return redirect(url_for('index'))
+    
+    celular = Celular.query.get_or_404(id)
+    
+    if celular.en_stock:
+        flash('Este celular ya está en stock.', 'warning')
+        return redirect(url_for('index'))
+    
+    try:
+        # Actualizar datos del celular
+        celular.modelo = request.form.get('modelo', celular.modelo).strip()
+        celular.color = request.form.get('color', '').strip() or celular.color
+        celular.gb = request.form.get('gb', celular.gb).strip()
+        celular.precio_compra = limpiar_pesos(request.form.get('precio_compra', '0'))
+        celular.precio_cliente = limpiar_pesos(request.form.get('precio_cliente', '0'))
+        celular.precio_patinado = limpiar_pesos(request.form.get('precio_patinado', '0'))
+        celular.estado = request.form.get('estado', 'Patinado')
+        celular.notas = request.form.get('notas', '')
+        celular.en_stock = True
+        celular.fecha_entrada = obtener_fecha_bogota()
+        celular.veces_ingresado = (celular.veces_ingresado or 1) + 1
+        
+        db.session.commit()
+        
+        flash(f'¡Celular {celular.modelo} reactivado! (Ingreso #{celular.veces_ingresado})', 'success')
+        return redirect(url_for('index'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al reactivar: {str(e)}', 'error')
+        return redirect(url_for('index'))
+
 
 @app.route('/', methods=['GET', 'POST'])
 @login_required
@@ -888,11 +1144,29 @@ def index():
     search = request.args.get('search', '')
     estado_filtro = request.args.get('estado', '')
     orden = request.args.get('orden', 'ultimos')
-    query = Celular.query.filter_by(en_stock=True)
-    if search:
-        query = query.filter((Celular.modelo.contains(search)) | (Celular.imei1.contains(search)) | (Celular.imei2.contains(search)))
+    
+    # Si se busca por IMEI (15 dígitos), mostrar también vendidos
+    es_busqueda_imei = search and search.isdigit() and len(search) >= 10
+    
+    if es_busqueda_imei:
+        # Buscar en TODOS los celulares (en stock y vendidos)
+        query = Celular.query.filter(
+            (Celular.imei1.contains(search)) | (Celular.imei2.contains(search))
+        )
+    else:
+        # Búsqueda normal: solo en stock
+        query = Celular.query.filter_by(en_stock=True)
+        if search:
+            query = query.filter((Celular.modelo.contains(search)) | (Celular.imei1.contains(search)) | (Celular.imei2.contains(search)))
+    
+    # Filtro por estado (incluyendo Vendido)
     if estado_filtro:
-        query = query.filter_by(estado=estado_filtro)
+        if estado_filtro == 'Vendido':
+            query = query.filter_by(en_stock=False)
+        elif estado_filtro == 'En Stock':
+            query = query.filter_by(en_stock=True)
+        else:
+            query = query.filter_by(estado=estado_filtro, en_stock=True)
     
     # Ordenamiento
     if orden == 'ultimos':

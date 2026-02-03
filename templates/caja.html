@@ -148,7 +148,11 @@
     <div class="card-body p-3">
         <h6 class="card-title mb-2">Filtros</h6>
         <form method="GET" class="row g-3">
-            <div class="col-md-3">
+            <div class="col-md-2">
+                <label class="form-label">Buscar IMEI</label>
+                <input type="text" name="imei" class="form-control" placeholder="IMEI del celular" value="{{ buscar_imei }}">
+            </div>
+            <div class="col-md-2">
                 <label class="form-label">Tipo de Transacción</label>
                 <select name="tipo" class="form-select">
                     <option value="">Todos</option>
@@ -158,17 +162,17 @@
                     <option value="Pago Trade-in" {% if tipo_filtro == 'Pago Trade-in' %}selected{% endif %}>Pago Trade-in</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Desde</label>
                 <input type="date" name="fecha_desde" class="form-control" value="{{ fecha_desde }}">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Hasta</label>
                 <input type="date" name="fecha_hasta" class="form-control" value="{{ fecha_hasta }}">
             </div>
-            <div class="col-md-3 d-flex align-items-end gap-2">
-                <button type="submit" class="btn btn-primary w-100">Filtrar</button>
-                {% if tipo_filtro or fecha_desde or fecha_hasta %}
+            <div class="col-md-4 d-flex align-items-end gap-2">
+                <button type="submit" class="btn btn-primary">Filtrar</button>
+                {% if tipo_filtro or fecha_desde or fecha_hasta or buscar_imei %}
                     <a href="{{ url_for('caja') }}" class="btn btn-outline-danger">Limpiar</a>
                 {% endif %}
             </div>
