@@ -174,7 +174,8 @@ class Dispositivo(db.Model):
     especificaciones = db.Column(db.Text)  # RAM, Almacenamiento, Procesador, etc.
     serial = db.Column(db.String(100), nullable=True)
     precio_compra = db.Column(db.Float, default=0.0)
-    precio_venta = db.Column(db.Float, default=0.0)
+    precio_cliente = db.Column(db.Float, default=0.0)
+    precio_patinado = db.Column(db.Float, default=0.0)
     estado = db.Column(db.String(20), default='disponible')  # disponible, vendido, dañado, servicio
     cantidad = db.Column(db.Integer, default=1)
     notas = db.Column(db.Text)
@@ -233,7 +234,8 @@ class DispositivoForm(FlaskForm):
     especificaciones = TextAreaField('Especificaciones (RAM, Almacenamiento, Procesador, etc.)')
     serial = StringField('Serial/Código')
     precio_compra = StringField('Precio Compra', validators=[DataRequired()])
-    precio_venta = StringField('Precio Venta', validators=[DataRequired()])
+    precio_cliente = StringField('Precio Cliente', validators=[DataRequired()])
+    precio_patinado = StringField('Precio Patinado', validators=[DataRequired()])
     cantidad = StringField('Cantidad', validators=[DataRequired()], default='1')
     estado = SelectField('Estado', choices=[
         ('local', 'Local'),
@@ -327,6 +329,16 @@ with app.app_context():
                 print("Migrando tabla dispositivo: agregando columna plan_retoma...")
                 with db.engine.connect() as conn:
                     conn.execute(text('ALTER TABLE dispositivo ADD COLUMN plan_retoma BOOLEAN DEFAULT 1'))
+                    conn.commit()
+            if 'precio_cliente' not in columnas_dispositivo:
+                print("Migrando tabla dispositivo: agregando columna precio_cliente...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE dispositivo ADD COLUMN precio_cliente FLOAT DEFAULT 0.0'))
+                    conn.commit()
+            if 'precio_patinado' not in columnas_dispositivo:
+                print("Migrando tabla dispositivo: agregando columna precio_patinado...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE dispositivo ADD COLUMN precio_patinado FLOAT DEFAULT 0.0'))
                     conn.commit()
         except Exception as mig_disp:
             print(f"Nota migración dispositivo: {mig_disp}")
@@ -593,7 +605,8 @@ def editar_dispositivo(id):
             dispositivo.especificaciones = form.especificaciones.data
             dispositivo.serial = form.serial.data
             dispositivo.precio_compra = limpiar_pesos(form.precio_compra.data)
-            dispositivo.precio_venta = limpiar_pesos(form.precio_venta.data)
+            dispositivo.precio_cliente = limpiar_pesos(form.precio_cliente.data)
+            dispositivo.precio_patinado = limpiar_pesos(form.precio_patinado.data)
             dispositivo.cantidad = int(form.cantidad.data)
             dispositivo.estado = form.estado.data
             dispositivo.notas = form.notas.data
@@ -617,7 +630,8 @@ def editar_dispositivo(id):
         form.especificaciones.data = dispositivo.especificaciones
         form.serial.data = dispositivo.serial
         form.precio_compra.data = dispositivo.precio_compra
-        form.precio_venta.data = dispositivo.precio_venta
+        form.precio_cliente.data = dispositivo.precio_cliente
+        form.precio_patinado.data = dispositivo.precio_patinado
         form.cantidad.data = dispositivo.cantidad
         form.estado.data = dispositivo.estado
         form.notas.data = dispositivo.notas
@@ -715,7 +729,7 @@ def api_vender_dispositivo(id):
     dispositivo = Dispositivo.query.get_or_404(id)
     
     try:
-        precio_venta = dispositivo.precio_venta * dispositivo.cantidad
+        precio_venta = dispositivo.precio_cliente * dispositivo.cantidad
         precio_compra = dispositivo.precio_compra * dispositivo.cantidad
         ganancia_neta = precio_venta - precio_compra
         
@@ -769,7 +783,7 @@ def api_obtener_dispositivo(id):
             'modelo': dispositivo.modelo,
             'serial': dispositivo.serial,
             'precio_compra': dispositivo.precio_compra,
-            'precio_venta': dispositivo.precio_venta,
+            'precio_venta': dispositivo.precio_cliente,
             'cantidad': dispositivo.cantidad,
             'estado': dispositivo.estado,
             'especificaciones': dispositivo.especificaciones,
@@ -796,7 +810,7 @@ def api_editar_dispositivo(id):
         if 'precio_compra' in data:
             dispositivo.precio_compra = limpiar_pesos(data['precio_compra'])
         if 'precio_venta' in data:
-            dispositivo.precio_venta = limpiar_pesos(data['precio_venta'])
+            dispositivo.precio_cliente = limpiar_pesos(data['precio_venta'])
         if 'cantidad' in data:
             dispositivo.cantidad = int(data['cantidad'])
         if 'estado' in data:
@@ -819,7 +833,7 @@ def api_editar_dispositivo(id):
                 'modelo': dispositivo.modelo,
                 'serial': dispositivo.serial,
                 'precio_compra': dispositivo.precio_compra,
-                'precio_venta': dispositivo.precio_venta,
+                'precio_venta': dispositivo.precio_cliente,
                 'cantidad': dispositivo.cantidad,
                 'estado': dispositivo.estado
             }
@@ -863,7 +877,7 @@ def vender_dispositivo(id):
     
     try:
         # Calcular ganancia neta
-        precio_venta = dispositivo.precio_venta * dispositivo.cantidad
+        precio_venta = dispositivo.precio_cliente * dispositivo.cantidad
         precio_compra = dispositivo.precio_compra * dispositivo.cantidad
         ganancia_neta = precio_venta - precio_compra
         
@@ -901,7 +915,7 @@ def retoma_dispositivo(id):
     estado_filtro = request.form.get('estado', '')
     orden = request.form.get('orden', 'ultimos')
 
-    total_venta = float(request.form.get('total_venta', dispositivo.precio_venta * dispositivo.cantidad))
+    total_venta = float(request.form.get('total_venta', dispositivo.precio_cliente * dispositivo.cantidad))
     cash_recibido = limpiar_pesos(request.form.get('cash_recibido', 0))
     cliente_nombre = request.form.get('cliente_nombre', 'Cliente')
 
@@ -1569,6 +1583,15 @@ def cambiar_estado(id):
     db.session.commit()
     flash(f'¡Cambio de estado exitoso! {celular.modelo} ahora es {nuevo_estado}.', 'success')
     return redirect(url_for('index'))
+
+@app.route('/configuracion_empresa')
+@login_required
+def configuracion_empresa():
+    if current_user.role != 'Admin':
+        flash('Acceso denegado.', 'error')
+        return redirect(url_for('index'))
+    # Placeholder para configuración de empresa
+    return render_template('configuracion.html', user=current_user)
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -42,7 +42,11 @@
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
                                 <li><span class="dropdown-item-text">Rol: <strong>{{ current_user.role }}</strong></span></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="{{ url_for('logout') }}">🚪 Logout</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('logout') }}">🚪 Cerrar Sesión</a></li>
+                                {% if current_user.role == 'Admin' %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ url_for('configuracion_empresa') }}">⚙️ Configuración</a></li>
+                                {% endif %}
                             </ul>
                         </li>
                     </ul>

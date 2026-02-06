@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block page_content %}
+<!-- Navegación -->
+<nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+    <div class="container">
+        <ul class="navbar-nav me-auto">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Celulares</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('dispositivos') }}">Dispositivos</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('caja') }}">Caja</a></li>
+            <li class="nav-item"><a class="nav-link active" href="{{ url_for('configuracion_empresa') }}">⚙️ Configuración</a></li>
+        </ul>
+        <span class="navbar-text">Rol: {{ user.role }} | Usuario: {{ user.username }}</span>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">⚙️ Configuración de la Empresa</h4>
+                    <small>Estos datos aparecerán en las facturas generadas</small>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <!-- Datos principales -->
+                        <h5 class="border-bottom pb-2 mb-3">🏪 Datos del Negocio</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label class="form-label fw-bold">Nombre del Negocio <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-lg" name="nombre" 
+                                       value="{{ config.nombre }}" required placeholder="Ej: CellStore">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">NIT <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-lg" name="nit" 
+                                       value="{{ config.nit }}" required placeholder="Ej: 900.123.456-7">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Slogan / Lema</label>
+                            <input type="text" class="form-control" name="slogan" 
+                                   value="{{ config.slogan }}" placeholder="Ej: Tu tienda de confianza">
+                            <div class="form-text">Aparece debajo del nombre en la factura</div>
+                        </div>
+                        
+                        <!-- Ubicación -->
+                        <h5 class="border-bottom pb-2 mb-3 mt-4">📍 Ubicación</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label class="form-label fw-bold">Dirección <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="direccion" 
+                                       value="{{ config.direccion }}" required placeholder="Ej: Calle 123 # 45-67, Local 101">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">Ciudad <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="ciudad" 
+                                       value="{{ config.ciudad }}" required placeholder="Ej: Bogotá">
+                            </div>
+                        </div>
+                        
+                        <!-- Contacto -->
+                        <h5 class="border-bottom pb-2 mb-3 mt-4">📞 Contacto</h5>
+                        
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">Teléfono Principal <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="telefono" 
+                                       value="{{ config.telefono }}" required placeholder="Ej: 300-123-4567">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Teléfono Secundario</label>
+                                <input type="text" class="form-control" name="telefono2" 
+                                       value="{{ config.telefono2 }}" placeholder="Opcional">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" name="email" 
+                                       value="{{ config.email }}" placeholder="Opcional">
+                            </div>
+                        </div>
+                        
+                        <!-- Mensaje factura -->
+                        <h5 class="border-bottom pb-2 mb-3 mt-4">📄 Mensaje en Factura</h5>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Mensaje Final</label>
+                            <input type="text" class="form-control" name="mensaje_factura" 
+                                   value="{{ config.mensaje_factura }}" placeholder="Ej: ¡Gracias por su compra!">
+                            <div class="form-text">Este mensaje aparece al final de cada factura</div>
+                        </div>
+                        
+                        <!-- Vista previa -->
+                        <div class="card bg-light mt-4">
+                            <div class="card-header">
+                                <strong>👁️ Vista Previa del Encabezado</strong>
+                            </div>
+                            <div class="card-body text-center" style="font-family: monospace; font-size: 12px;">
+                                <div id="preview-nombre" class="fw-bold" style="font-size: 14px;">{{ config.nombre }}</div>
+                                <div id="preview-slogan" class="text-muted" style="font-size: 10px;">{{ config.slogan }}</div>
+                                <div id="preview-nit">NIT: {{ config.nit }}</div>
+                                <div id="preview-direccion">{{ config.direccion }}</div>
+                                <div id="preview-ciudad">{{ config.ciudad }}</div>
+                                <div id="preview-telefono">Tel: {{ config.telefono }}{% if config.telefono2 %} / {{ config.telefono2 }}{% endif %}</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Botones -->
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('index') }}" class="btn btn-secondary">← Volver</a>
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                💾 Guardar Configuración
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Actualizar vista previa en tiempo real
+    document.querySelector('input[name="nombre"]').addEventListener('input', function() {
+        document.getElementById('preview-nombre').textContent = this.value || 'Nombre del Negocio';
+    });
+    document.querySelector('input[name="slogan"]').addEventListener('input', function() {
+        document.getElementById('preview-slogan').textContent = this.value;
+    });
+    document.querySelector('input[name="nit"]').addEventListener('input', function() {
+        document.getElementById('preview-nit').textContent = 'NIT: ' + (this.value || 'XXX.XXX.XXX-X');
+    });
+    document.querySelector('input[name="direccion"]').addEventListener('input', function() {
+        document.getElementById('preview-direccion').textContent = this.value || 'Dirección';
+    });
+    document.querySelector('input[name="ciudad"]').addEventListener('input', function() {
+        document.getElementById('preview-ciudad').textContent = this.value || 'Ciudad';
+    });
+    document.querySelector('input[name="telefono"]').addEventListener('input', function() {
+        const tel2 = document.querySelector('input[name="telefono2"]').value;
+        let texto = 'Tel: ' + (this.value || '000-000-0000');
+        if (tel2) texto += ' / ' + tel2;
+        document.getElementById('preview-telefono').textContent = texto;
+    });
+    document.querySelector('input[name="telefono2"]').addEventListener('input', function() {
+        const tel1 = document.querySelector('input[name="telefono"]').value;
+        let texto = 'Tel: ' + (tel1 || '000-000-0000');
+        if (this.value) texto += ' / ' + this.value;
+        document.getElementById('preview-telefono').textContent = texto;
+    });
+</script>
+{% endblock %}

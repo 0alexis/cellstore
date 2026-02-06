@@ -99,6 +99,96 @@
     </div>
 </div>
 
+<!-- Modal Facturación (Venta con PDF) -->
+<div class="modal fade" id="facturaModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">📄 Registrar Venta</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="factura-dispositivo-id">
+                
+                <!-- Info del dispositivo -->
+                <div class="alert alert-info mb-3">
+                    <strong>Dispositivo:</strong> <span id="factura-dispositivo-info"></span>
+                </div>
+                
+                <!-- Tipo de venta -->
+                <h6 class="border-bottom pb-2 mb-3">💰 Tipo de Venta</h6>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="tipo-venta" id="tipo-venta-cliente" value="cliente" checked>
+                            <label class="form-check-label fw-bold text-primary" for="tipo-venta-cliente">
+                                👤 Venta Cliente
+                            </label>
+                        </div>
+                        <div class="text-muted small" id="precio-cliente-label">$0</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="tipo-venta" id="tipo-venta-patinado" value="patinado">
+                            <label class="form-check-label fw-bold text-danger" for="tipo-venta-patinado">
+                                🛹 Venta Patinado
+                            </label>
+                        </div>
+                        <div class="text-muted small" id="precio-patinado-label">$0</div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-warning py-2" id="precio-seleccionado">
+                    <strong>Precio de venta:</strong> <span id="factura-dispositivo-precio" class="fw-bold fs-5">$0</span>
+                </div>
+                
+                <!-- Datos del cliente/tercero -->
+                <h6 class="border-bottom pb-2 mb-3" id="label-datos-cliente">👤 Datos del Cliente (Opcional)</h6>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Nombre</label>
+                        <input type="text" class="form-control" id="factura-cliente-nombre" placeholder="Consumidor Final">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Cédula/NIT</label>
+                        <input type="text" class="form-control" id="factura-cliente-cedula" placeholder="Ej: 1234567890">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" class="form-control" id="factura-cliente-telefono" placeholder="Ej: 300-123-4567">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Método de Pago</label>
+                        <select class="form-select" id="factura-metodo-pago">
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Tarjeta">Tarjeta</option>
+                            <option value="Mixto">Mixto</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Dirección</label>
+                    <input type="text" class="form-control" id="factura-cliente-direccion" placeholder="Opcional">
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <div>
+                    <button type="button" class="btn btn-outline-success" id="btn-solo-vender">
+                        ✓ Solo Vender
+                    </button>
+                    <button type="button" class="btn btn-success" id="btn-vender-factura">
+                        📄 Vender + Descargar PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal Editar Dispositivo (AJAX) -->
 <div class="modal fade" id="editModalAjax" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -144,13 +234,17 @@
                     </div>
                 </div>
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">Precio Compra <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="edit-precio_compra">
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">Precio Venta <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="edit-precio_venta">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Precio Cliente <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit-precio_cliente">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Precio Patinado <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit-precio_patinado">
                     </div>
                 </div>
                 <div class="row">
@@ -219,13 +313,17 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label class="form-label">Precio Compra <span class="text-danger">*</span></label>
                             {{ form.precio_compra(class="form-control", placeholder="Ej: 1500000") }}
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Precio Venta <span class="text-danger">*</span></label>
-                            {{ form.precio_venta(class="form-control", placeholder="Ej: 2000000") }}
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Precio Cliente <span class="text-danger">*</span></label>
+                            {{ form.precio_cliente(class="form-control", placeholder="Ej: 2000000") }}
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Precio Patinado <span class="text-danger">*</span></label>
+                            {{ form.precio_patinado(class="form-control", placeholder="Ej: 1800000") }}
                         </div>
                     </div>
                     <div class="row">
@@ -265,9 +363,10 @@
                 <th>Marca</th>
                 <th>Modelo</th>
                 <th>Serial</th>
-                <th>Cantidad</th>
-                <th>Precio Compra</th>
-                <th>Precio Venta</th>
+                <th>Cant</th>
+                <th>P. Compra</th>
+                <th>P. Cliente</th>
+                <th>P. Patinado</th>
                 <th>Estado</th>
                 <th>Acciones</th>
             </tr>
@@ -282,7 +381,8 @@
                     <td>{{ d.serial or '-' }}</td>
                     <td>{{ d.cantidad }}</td>
                     <td><strong>{{ d.precio_compra|pesos }}</strong></td>
-                    <td><strong>{{ d.precio_venta|pesos }}</strong></td>
+                    <td class="text-primary"><strong>{{ d.precio_cliente|pesos }}</strong></td>
+                    <td class="text-danger"><strong>{{ d.precio_patinado|pesos }}</strong></td>
                     <td>
                         <div class="estado-container" data-id="{{ d.id }}">
                             <select class="form-select form-select-sm estado-select-ajax
@@ -329,7 +429,7 @@
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                             </div>
                             <form method="POST" action="{{ url_for('retoma_dispositivo', id=d.id) }}">
-                                <input type="hidden" name="total_venta" value="{{ (d.precio_venta * d.cantidad)|float }}">
+                                <input type="hidden" name="total_venta" value="{{ (d.precio_cliente * d.cantidad)|float }}">
                                 <input type="hidden" name="search" value="{{ search }}">
                                 <input type="hidden" name="tipo" value="{{ tipo_filtro }}">
                                 <input type="hidden" name="estado" value="{{ estado_filtro }}">
@@ -537,7 +637,7 @@
                                         </div>
                                     </div>
                                     <div class="alert alert-info">
-                                        <strong>Saldo Pendiente:</strong> Total Venta ({{ (d.precio_venta * d.cantidad)|pesos }}) - Cash - Suma de valores recibidos.
+                                        <strong>Saldo Pendiente:</strong> Total Venta ({{ (d.precio_cliente * d.cantidad)|pesos }}) - Cash - Suma de valores recibidos.
                                     </div>
                                 </div>
                                 <div class="modal-footer">
@@ -609,7 +709,7 @@
     }
     
     // Formatear precios con pesos mientras se escribe
-    document.querySelectorAll('input[name="precio_compra"], input[name="precio_venta"]').forEach(input => {
+    document.querySelectorAll('input[name="precio_compra"], input[name="precio_cliente"]').forEach(input => {
         input.addEventListener('input', function() {
             if (this.value) {
                 this.value = formatearPesos(this.value);
@@ -747,9 +847,91 @@
         }
     }
     
-    // Vender dispositivo via AJAX
-    async function venderDispositivoAjax(id) {
-        if (!confirm('¿Marcar este dispositivo como vendido?')) return;
+    // === SISTEMA DE FACTURACIÓN ===
+    const facturaModal = new bootstrap.Modal(document.getElementById('facturaModal'));
+    let dispositivoActualVenta = null;
+    
+    // Función para actualizar precio según tipo de venta
+    function actualizarPrecioVenta() {
+        if (!dispositivoActualVenta) return;
+        
+        const tipoVenta = document.querySelector('input[name="tipo-venta"]:checked').value;
+        let precio;
+        
+        if (tipoVenta === 'patinado') {
+            precio = dispositivoActualVenta.precio_patinado * dispositivoActualVenta.cantidad;
+            document.getElementById('label-datos-cliente').textContent = '🛹 Datos del Tercero/Patinador (Opcional)';
+        } else {
+            precio = dispositivoActualVenta.precio_cliente * dispositivoActualVenta.cantidad;
+            document.getElementById('label-datos-cliente').textContent = '👤 Datos del Cliente (Opcional)';
+        }
+        
+        document.getElementById('factura-dispositivo-precio').textContent = formatearPesosConSigno(precio);
+    }
+    
+    // Event listeners para cambio de tipo de venta
+    document.getElementById('tipo-venta-cliente').addEventListener('change', actualizarPrecioVenta);
+    document.getElementById('tipo-venta-patinado').addEventListener('change', actualizarPrecioVenta);
+    
+    // Abrir modal de facturación
+    async function abrirModalFactura(id) {
+        try {
+            const response = await fetch(`/api/dispositivo/${id}`, {
+                credentials: 'same-origin'
+            });
+            
+            if (response.redirected) {
+                showToast('Sesión expirada', 'error');
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                const d = data.dispositivo;
+                dispositivoActualVenta = d;
+                
+                // Llenar info del dispositivo
+                document.getElementById('factura-dispositivo-id').value = d.id;
+                document.getElementById('factura-dispositivo-info').textContent = 
+                    `${d.tipo} ${d.marca} ${d.modelo} (x${d.cantidad})`;
+                
+                // Mostrar precios
+                document.getElementById('precio-cliente-label').textContent = 
+                    formatearPesosConSigno(d.precio_cliente * d.cantidad);
+                document.getElementById('precio-patinado-label').textContent = 
+                    formatearPesosConSigno(d.precio_patinado * d.cantidad);
+                
+                // Seleccionar cliente por defecto y actualizar precio
+                document.getElementById('tipo-venta-cliente').checked = true;
+                actualizarPrecioVenta();
+                
+                // Limpiar campos del cliente
+                document.getElementById('factura-cliente-nombre').value = '';
+                document.getElementById('factura-cliente-cedula').value = '';
+                document.getElementById('factura-cliente-telefono').value = '';
+                document.getElementById('factura-cliente-direccion').value = '';
+                document.getElementById('factura-metodo-pago').value = 'Efectivo';
+                
+                facturaModal.show();
+            } else {
+                showToast(data.error || 'Error al cargar dispositivo', 'error');
+            }
+        } catch (error) {
+            showToast('Error de conexión', 'error');
+            console.error(error);
+        }
+    }
+    
+    // Obtener tipo de venta seleccionado
+    function obtenerTipoVenta() {
+        return document.querySelector('input[name="tipo-venta"]:checked').value;
+    }
+    
+    // Procesar venta (sin factura PDF)
+    async function procesarVentaSinFactura() {
+        const id = document.getElementById('factura-dispositivo-id').value;
+        const tipoVenta = obtenerTipoVenta();
         
         try {
             const response = await fetch(`/api/dispositivo/vender/${id}`, {
@@ -757,18 +939,12 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                body: JSON.stringify({ tipo_venta: tipoVenta }),
                 credentials: 'same-origin'
             });
             
-            // Verificar si fue redirigido al login
             if (response.redirected) {
-                showToast('Sesión expirada. Recarga la página.', 'error');
-                return;
-            }
-            
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                showToast('Error de autenticación', 'error');
+                showToast('Sesión expirada', 'error');
                 return;
             }
             
@@ -776,30 +952,8 @@
             
             if (data.success) {
                 showToast(data.message, 'success');
-                
-                // Actualizar el select de estado
-                const selectEl = document.querySelector(`.estado-select-ajax[data-id="${id}"]`);
-                if (selectEl) {
-                    selectEl.value = 'Vendido';
-                    selectEl.dataset.estadoOriginal = 'Vendido';
-                    updateEstadoSelectColor(selectEl, 'Vendido');
-                }
-                
-                // Actualizar botones de acción
-                const accionesContainer = document.querySelector(`.acciones-container[data-id="${id}"]`);
-                if (accionesContainer) {
-                    const btnVender = accionesContainer.querySelector('.btn-vender-ajax');
-                    const btnRetoma = accionesContainer.querySelector('[data-bs-target^="#retomaModalDispo"]');
-                    if (btnVender) btnVender.remove();
-                    if (btnRetoma) btnRetoma.remove();
-                    
-                    if (!accionesContainer.querySelector('.vendido-badge')) {
-                        const badge = document.createElement('span');
-                        badge.className = 'badge bg-success align-self-center vendido-badge';
-                        badge.textContent = 'Vendido';
-                        accionesContainer.insertBefore(badge, accionesContainer.querySelector('.btn-eliminar-ajax'));
-                    }
-                }
+                facturaModal.hide();
+                actualizarUIVendido(id);
             } else {
                 showToast(data.error || 'Error al vender', 'error');
             }
@@ -808,6 +962,114 @@
             console.error(error);
         }
     }
+    
+    // Procesar venta con factura PDF
+    async function procesarVentaConFactura() {
+        const id = document.getElementById('factura-dispositivo-id').value;
+        const tipoVenta = obtenerTipoVenta();
+        
+        // Primero registrar la venta
+        try {
+            const responseVenta = await fetch(`/api/dispositivo/vender/${id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ tipo_venta: tipoVenta }),
+                credentials: 'same-origin'
+            });
+            
+            if (responseVenta.redirected) {
+                showToast('Sesión expirada', 'error');
+                return;
+            }
+            
+            const dataVenta = await responseVenta.json();
+            
+            if (!dataVenta.success) {
+                showToast(dataVenta.error || 'Error al vender', 'error');
+                return;
+            }
+            
+            // Ahora generar y descargar el PDF
+            const datosCliente = {
+                tipo_venta: tipoVenta,
+                cliente_nombre: document.getElementById('factura-cliente-nombre').value || 'Consumidor Final',
+                cliente_cedula: document.getElementById('factura-cliente-cedula').value,
+                cliente_telefono: document.getElementById('factura-cliente-telefono').value,
+                cliente_direccion: document.getElementById('factura-cliente-direccion').value,
+                metodo_pago: document.getElementById('factura-metodo-pago').value
+            };
+            
+            const responsePDF = await fetch(`/api/dispositivo/factura/${id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(datosCliente),
+                credentials: 'same-origin'
+            });
+            
+            if (responsePDF.ok) {
+                // Descargar el PDF
+                const blob = await responsePDF.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = responsePDF.headers.get('Content-Disposition')?.split('filename=')[1] || `factura_${id}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+                
+                showToast(dataVenta.message + ' - Factura descargada', 'success');
+            } else {
+                showToast(dataVenta.message + ' (Error al generar PDF)', 'warning');
+            }
+            
+            facturaModal.hide();
+            actualizarUIVendido(id);
+            
+        } catch (error) {
+            showToast('Error de conexión', 'error');
+            console.error(error);
+        }
+    }
+    
+    // Actualizar UI después de vender
+    function actualizarUIVendido(id) {
+        // Actualizar el select de estado
+        const selectEl = document.querySelector(`.estado-select-ajax[data-id="${id}"]`);
+        if (selectEl) {
+            selectEl.value = 'Vendido';
+            selectEl.dataset.estadoOriginal = 'Vendido';
+            updateEstadoSelectColor(selectEl, 'Vendido');
+        }
+        
+        // Actualizar botones de acción
+        const accionesContainer = document.querySelector(`.acciones-container[data-id="${id}"]`);
+        if (accionesContainer) {
+            const btnVender = accionesContainer.querySelector('.btn-vender-ajax');
+            const btnRetoma = accionesContainer.querySelector('[data-bs-target^="#retomaModalDispo"]');
+            if (btnVender) btnVender.remove();
+            if (btnRetoma) btnRetoma.remove();
+            
+            if (!accionesContainer.querySelector('.vendido-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-success align-self-center vendido-badge';
+                badge.textContent = 'Vendido';
+                accionesContainer.insertBefore(badge, accionesContainer.querySelector('.btn-eliminar-ajax'));
+            }
+        }
+        
+        // Ocultar selector de tercero
+        const terceroSelect = document.querySelector(`.tercero-selector-ajax[data-id="${id}"]`);
+        if (terceroSelect) terceroSelect.style.display = 'none';
+    }
+    
+    // Event listeners para modal de factura
+    document.getElementById('btn-solo-vender').addEventListener('click', procesarVentaSinFactura);
+    document.getElementById('btn-vender-factura').addEventListener('click', procesarVentaConFactura);
     
     // Eliminar dispositivo via AJAX
     async function eliminarDispositivoAjax(id) {
@@ -894,7 +1156,7 @@
     
     document.querySelectorAll('.btn-vender-ajax').forEach(btn => {
         btn.addEventListener('click', function() {
-            venderDispositivoAjax(this.dataset.id);
+            abrirModalFactura(this.dataset.id);
         });
     });
     
@@ -941,7 +1203,8 @@
                 document.getElementById('edit-modelo').value = d.modelo || '';
                 document.getElementById('edit-serial').value = d.serial || '';
                 document.getElementById('edit-precio_compra').value = formatearPesosEdit(d.precio_compra);
-                document.getElementById('edit-precio_venta').value = formatearPesosEdit(d.precio_venta);
+                document.getElementById('edit-precio_cliente').value = formatearPesosEdit(d.precio_cliente);
+                document.getElementById('edit-precio_patinado').value = formatearPesosEdit(d.precio_patinado);
                 document.getElementById('edit-cantidad').value = d.cantidad || 1;
                 document.getElementById('edit-estado').value = d.estado;
                 document.getElementById('edit-especificaciones').value = d.especificaciones || '';
@@ -966,7 +1229,8 @@
             modelo: document.getElementById('edit-modelo').value,
             serial: document.getElementById('edit-serial').value,
             precio_compra: document.getElementById('edit-precio_compra').value,
-            precio_venta: document.getElementById('edit-precio_venta').value,
+            precio_cliente: document.getElementById('edit-precio_cliente').value,
+            precio_patinado: document.getElementById('edit-precio_patinado').value,
             cantidad: document.getElementById('edit-cantidad').value,
             estado: document.getElementById('edit-estado').value,
             especificaciones: document.getElementById('edit-especificaciones').value,
@@ -999,14 +1263,15 @@
                 if (row && data.dispositivo) {
                     const d = data.dispositivo;
                     const cells = row.querySelectorAll('td');
-                    if (cells.length >= 8) {
+                    if (cells.length >= 9) {
                         cells[0].innerHTML = `<span class="badge bg-info">${d.tipo}</span>`;
                         cells[1].textContent = d.marca;
                         cells[2].textContent = d.modelo;
                         cells[3].textContent = d.serial || '-';
                         cells[4].textContent = d.cantidad;
                         cells[5].innerHTML = `<strong>${formatearPesosConSigno(d.precio_compra)}</strong>`;
-                        cells[6].innerHTML = `<strong>${formatearPesosConSigno(d.precio_venta)}</strong>`;
+                        cells[6].innerHTML = `<strong class="text-primary">${formatearPesosConSigno(d.precio_cliente)}</strong>`;
+                        cells[7].innerHTML = `<strong class="text-danger">${formatearPesosConSigno(d.precio_patinado)}</strong>`;
                         
                         // Actualizar select de estado
                         const estadoSelect = row.querySelector('.estado-select-ajax');
@@ -1048,7 +1313,7 @@
     document.getElementById('btn-guardar-edicion').addEventListener('click', guardarEdicionAjax);
     
     // Formatear precios en modal de edición mientras se escribe
-    ['edit-precio_compra', 'edit-precio_venta'].forEach(id => {
+    ['edit-precio_compra', 'edit-precio_cliente', 'edit-precio_patinado'].forEach(id => {
         document.getElementById(id).addEventListener('input', function() {
             if (this.value) {
                 this.value = formatearPesos(this.value);

@@ -14,7 +14,7 @@ if __name__ == '__main__':
     # Ejecutar con host 0.0.0.0 para acceso remoto
     app.run(
         host='0.0.0.0',
-        port=5000,
+        port=5001,
         debug=False,  # Cambiar a True solo en desarrollo
         use_reloader=False  # Importante para servicios Windows
     )

@@ -613,29 +613,104 @@
                 </div>
                 <!-- Modal Vendido (dentro del loop) -->
                 <div class="modal fade" id="ventaModal{{ cel.id }}" tabindex="-1">
-                    <div class="modal-dialog">
+                    <div class="modal-dialog modal-lg">
                         <div class="modal-content">
-                            <div class="modal-header">
-                                <h5>Vender {{ cel.modelo }}</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            <div class="modal-header bg-success text-white">
+                                <h5><i class="fas fa-cash-register me-2"></i>Vender {{ cel.modelo }}</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                             </div>
-                            <form method="POST" action="{{ url_for('vender', id=cel.id) }}">
-                                <div class="modal-body">
-                                    <p>Selecciona tipo de venta:</p>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="tipo_venta" id="cliente{{ cel.id }}" value="cliente" checked>
-                                        <label class="form-check-label" for="cliente{{ cel.id }}">Al Cliente (Precio: {{ cel.precio_cliente|pesos }})</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="tipo_venta" id="patinado{{ cel.id }}" value="patinado">
-                                        <label class="form-check-label" for="patinado{{ cel.id }}">Patinado (Precio: {{ cel.precio_patinado|pesos }})</label>
+                            <div class="modal-body">
+                                <!-- Tipo de venta -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Tipo de Venta</label>
+                                    <div class="d-flex gap-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="tipo_venta_cel{{ cel.id }}" 
+                                                   id="tipo-venta-cliente{{ cel.id }}" value="cliente" checked
+                                                   onchange="actualizarPrecioVentaCel({{ cel.id }}, {{ cel.precio_cliente }}, {{ cel.precio_patinado }})">
+                                            <label class="form-check-label" for="tipo-venta-cliente{{ cel.id }}">
+                                                <i class="fas fa-user me-1"></i>Venta Cliente
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="tipo_venta_cel{{ cel.id }}" 
+                                                   id="tipo-venta-patinado{{ cel.id }}" value="patinado"
+                                                   onchange="actualizarPrecioVentaCel({{ cel.id }}, {{ cel.precio_cliente }}, {{ cel.precio_patinado }})">
+                                            <label class="form-check-label" for="tipo-venta-patinado{{ cel.id }}">
+                                                <i class="fas fa-store me-1"></i>Patinado
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                    <button type="submit" class="btn btn-success">Confirmar Venta</button>
+                                
+                                <!-- Precio a cobrar -->
+                                <div class="alert alert-info mb-3">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span><strong>Precio:</strong></span>
+                                        <span class="fs-4 fw-bold" id="precio-venta-cel{{ cel.id }}">{{ cel.precio_cliente|pesos }}</span>
+                                    </div>
                                 </div>
-                            </form>
+                                
+                                <hr>
+                                
+                                <!-- Opciones de factura -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">¿Generar Factura PDF?</label>
+                                    <div class="d-flex gap-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="opcion_factura_cel{{ cel.id }}" 
+                                                   id="sin-factura-cel{{ cel.id }}" value="sin_factura" checked
+                                                   onchange="toggleCamposFacturaCel({{ cel.id }})">
+                                            <label class="form-check-label" for="sin-factura-cel{{ cel.id }}">No, solo registrar venta</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="opcion_factura_cel{{ cel.id }}" 
+                                                   id="con-factura-cel{{ cel.id }}" value="con_factura"
+                                                   onchange="toggleCamposFacturaCel({{ cel.id }})">
+                                            <label class="form-check-label" for="con-factura-cel{{ cel.id }}">Sí, generar PDF</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Campos de factura (ocultos por defecto) -->
+                                <div id="campos-factura-cel{{ cel.id }}" style="display: none;">
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Nombre Cliente/Tercero</label>
+                                            <input type="text" class="form-control" id="cliente-nombre-cel{{ cel.id }}" placeholder="Consumidor Final">
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Cédula/NIT</label>
+                                            <input type="text" class="form-control" id="cliente-cedula-cel{{ cel.id }}" placeholder="Opcional">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Teléfono</label>
+                                            <input type="text" class="form-control" id="cliente-telefono-cel{{ cel.id }}" placeholder="Opcional">
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Dirección</label>
+                                            <input type="text" class="form-control" id="cliente-direccion-cel{{ cel.id }}" placeholder="Opcional">
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Método de Pago</label>
+                                        <select class="form-select" id="metodo-pago-cel{{ cel.id }}">
+                                            <option value="Efectivo">Efectivo</option>
+                                            <option value="Transferencia">Transferencia</option>
+                                            <option value="Tarjeta">Tarjeta</option>
+                                            <option value="Mixto">Mixto</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="button" class="btn btn-success" onclick="confirmarVentaCel({{ cel.id }})">
+                                    <i class="fas fa-check me-1"></i>Confirmar Venta
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1303,5 +1378,113 @@
 
         });
     });
+    
+    // ===== FUNCIONES PARA VENTA DE CELULARES CON FACTURA =====
+    
+    function formatearPesosCel(valor) {
+        // Eliminar todo excepto números
+        let num = valor.toString().replace(/\D/g, '');
+        if (!num) return '';
+        return '$' + parseInt(num).toLocaleString('es-CO').replace(/,/g, '.');
+    }
+    
+    function actualizarPrecioVentaCel(id, precioCliente, precioPatinado) {
+        const tipoCliente = document.getElementById(`tipo-venta-cliente${id}`);
+        const precioSpan = document.getElementById(`precio-venta-cel${id}`);
+        
+        if (tipoCliente && tipoCliente.checked) {
+            precioSpan.textContent = formatearPesosCel(precioCliente);
+        } else {
+            precioSpan.textContent = formatearPesosCel(precioPatinado);
+        }
+    }
+    
+    function toggleCamposFacturaCel(id) {
+        const conFactura = document.getElementById(`con-factura-cel${id}`);
+        const camposFactura = document.getElementById(`campos-factura-cel${id}`);
+        
+        if (conFactura && conFactura.checked) {
+            camposFactura.style.display = 'block';
+        } else {
+            camposFactura.style.display = 'none';
+        }
+    }
+    
+    function confirmarVentaCel(id) {
+        const tipoCliente = document.getElementById(`tipo-venta-cliente${id}`);
+        const tipoVenta = tipoCliente && tipoCliente.checked ? 'cliente' : 'patinado';
+        
+        const conFactura = document.getElementById(`con-factura-cel${id}`);
+        const generarFactura = conFactura && conFactura.checked;
+        
+        if (generarFactura) {
+            // Vender con factura
+            const datos = {
+                tipo_venta: tipoVenta,
+                cliente_nombre: document.getElementById(`cliente-nombre-cel${id}`)?.value || 'Consumidor Final',
+                cliente_cedula: document.getElementById(`cliente-cedula-cel${id}`)?.value || '',
+                cliente_telefono: document.getElementById(`cliente-telefono-cel${id}`)?.value || '',
+                cliente_direccion: document.getElementById(`cliente-direccion-cel${id}`)?.value || '',
+                metodo_pago: document.getElementById(`metodo-pago-cel${id}`)?.value || 'Efectivo'
+            };
+            
+            fetch(`/api/celular/factura/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos)
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.blob();
+                }
+                throw new Error('Error al generar factura');
+            })
+            .then(blob => {
+                // Descargar el PDF
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `factura_celular_${id}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+                
+                // Cerrar modal y recargar
+                const modal = bootstrap.Modal.getInstance(document.getElementById(`ventaModal${id}`));
+                if (modal) modal.hide();
+                
+                setTimeout(() => location.reload(), 500);
+            })
+            .catch(error => {
+                alert('Error: ' + error.message);
+            });
+        } else {
+            // Vender sin factura
+            fetch(`/api/celular/vender/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tipo_venta: tipoVenta })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById(`ventaModal${id}`));
+                    if (modal) modal.hide();
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Error: ' + error.message);
+            });
+        }
+    }
+    
+    // Exponer funciones al ámbito global
+    window.actualizarPrecioVentaCel = actualizarPrecioVentaCel;
+    window.toggleCamposFacturaCel = toggleCamposFacturaCel;
+    window.confirmarVentaCel = confirmarVentaCel;
 </script>
 {% endblock %}
