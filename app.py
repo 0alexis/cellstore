@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -6,12 +6,30 @@ from wtforms import StringField, FloatField, SelectField, TextAreaField, SubmitF
 from wtforms.validators import DataRequired, EqualTo
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 import pytz
+import os
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.graphics.barcode.qr import QrCodeWidget
+from reportlab.graphics.shapes import Drawing
+from reportlab.platypus import Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tu_clave_secreta_cambia_esto'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:root@localhost/inventario'  # ¡Cambiado a "inventario"! Cambia "tu_password"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Fix para PyMySQL (¡IMPORTANTE: Esto evita el error de mysqlclient!)
 import pymysql
@@ -42,6 +60,49 @@ def formato_pesos(valor):
         entero_formateado = digito + entero_formateado
 
     return f"${entero_formateado}"
+
+
+# Función auxiliar para agregar logo al PDF
+def agregar_logo_pdf(elements, config, ticket_width):
+    """Agrega logo al PDF si existe en la configuración"""
+    if config and config.logo_filename:
+        logo_path = os.path.join(app.config['UPLOAD_FOLDER'], config.logo_filename)
+        if os.path.exists(logo_path):
+            try:
+                # Calcular tamaño proporcional (max 150px ancho, 60px alto)
+                img = RLImage(logo_path)
+                aspect = img.imageWidth / img.imageHeight
+                if aspect > 2.5:  # Logo muy ancho
+                    img_width = min(150, ticket_width - 20)
+                    img_height = img_width / aspect
+                else:  # Logo normal
+                    img_height = 60
+                    img_width = img_height * aspect
+                
+                img.drawWidth = img_width
+                img.drawHeight = img_height
+                img.hAlign = 'CENTER'
+                elements.append(img)
+                elements.append(Spacer(1, 0.05 * inch))
+            except:
+                pass  # Si hay error, continuar sin logo
+
+# Función auxiliar para agregar QR de Instagram al PDF
+def agregar_qr_pdf(elements, config, size=70):
+    """Agrega QR de Instagram si existe en la configuración"""
+    if config and config.instagram_url:
+        try:
+            qr_code = QrCodeWidget(config.instagram_url)
+            bounds = qr_code.getBounds()
+            width = bounds[2] - bounds[0]
+            height = bounds[3] - bounds[1]
+            scale = size / max(width, height)
+            drawing = Drawing(size, size, transform=[scale, 0, 0, scale, 0, 0])
+            drawing.add(qr_code)
+            elements.append(drawing)
+            elements.append(Spacer(1, 0.05 * inch))
+        except:
+            pass
 
 # Función para limpiar valores de pesos (remover puntos y convertir a float)
 def limpiar_pesos(valor):
@@ -84,6 +145,20 @@ class User(UserMixin, db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
+# Modelo ConfiguracionEmpresa
+class ConfiguracionEmpresa(db.Model):
+    __tablename__ = 'configuracion_empresa'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), default='CellStore')
+    nit = db.Column(db.String(50), default='900.123.456-7')
+    telefono = db.Column(db.String(50), default='(601) 234-5678')
+    direccion = db.Column(db.String(200))
+    email = db.Column(db.String(100))
+    instagram_url = db.Column(db.String(255))
+    logo_filename = db.Column(db.String(255))
+    creado_en = db.Column(db.DateTime, default=obtener_fecha_bogota)
+    actualizado_en = db.Column(db.DateTime, default=obtener_fecha_bogota, onupdate=obtener_fecha_bogota)
 
 # Modelo TradeIn (primero, para referencia)
 class TradeIn(db.Model):
@@ -1055,6 +1130,224 @@ def retoma_dispositivo(id):
     return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
 
 
+# === RUTAS API PARA CELULARES ===
+@app.route('/api/celular/vender/<int:id>', methods=['POST'])
+@login_required
+def api_vender_celular(id):
+    """API para vender celular sin factura"""
+    celular = Celular.query.get_or_404(id)
+    data = request.get_json() or {}
+    tipo_venta = data.get('tipo_venta', 'cliente')
+    
+    try:
+        if tipo_venta == 'patinado':
+            monto = celular.precio_patinado
+            sub_tipo = 'Patinado'
+            celular.estado = 'Patinado'
+        else:
+            monto = celular.precio_cliente
+            sub_tipo = 'Cliente'
+            celular.estado = 'Vendido'
+        
+        ganancia_neta = monto - celular.precio_compra
+        celular.en_stock = False
+        
+        descripcion = f'Venta {sub_tipo} {celular.modelo} IMEI1 {celular.imei1}'
+        trans = Transaccion(tipo='Venta', monto=monto, ganancia_neta=ganancia_neta, descripcion=descripcion)
+        db.session.add(trans)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'¡{celular.modelo} vendido como {sub_tipo}! Ganancia: ${int(ganancia_neta):,}'.replace(',', '.')
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/celular/factura/<int:id>', methods=['POST'])
+@login_required
+def api_generar_factura_celular(id):
+    """API para vender celular con factura PDF"""
+    celular = Celular.query.get_or_404(id)
+    data = request.get_json() or {}
+    
+    tipo_venta = data.get('tipo_venta', 'cliente')
+    cliente_nombre = data.get('cliente_nombre', 'Consumidor Final')
+    cliente_cedula = data.get('cliente_cedula', '')
+    cliente_telefono = data.get('cliente_telefono', '')
+    cliente_direccion = data.get('cliente_direccion', '')
+    metodo_pago = data.get('metodo_pago', 'Efectivo')
+    
+    try:
+        # Determinar precio según tipo de venta
+        if tipo_venta == 'patinado':
+            monto = celular.precio_patinado
+            sub_tipo = 'Patinado'
+            celular.estado = 'Patinado'
+        else:
+            monto = celular.precio_cliente
+            sub_tipo = 'Cliente'
+            celular.estado = 'Vendido'
+        
+        ganancia_neta = monto - celular.precio_compra
+        celular.en_stock = False
+        
+        # Crear transacción
+        descripcion = f'Venta {sub_tipo} {celular.modelo} IMEI1 {celular.imei1} - Cliente: {cliente_nombre}'
+        trans = Transaccion(tipo='Venta', monto=monto, ganancia_neta=ganancia_neta, descripcion=descripcion)
+        db.session.add(trans)
+        db.session.commit()
+        
+        # Generar PDF formato ticket térmico 80mm
+        buffer = BytesIO()
+        # Ancho: 76mm = 2.99 inches, alto variable
+        ticket_width = 76 * 2.83465  # 76mm en puntos (1mm = 2.83465 puntos)
+        ticket_height = 11 * inch  # Alto inicial, se ajusta automático
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=(ticket_width, ticket_height),
+            rightMargin=5,
+            leftMargin=5,
+            topMargin=5,
+            bottomMargin=5
+        )
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Estilos personalizados para ticket
+        title_style = ParagraphStyle(
+            'TicketTitle',
+            parent=styles['Heading1'],
+            fontSize=12,
+            textColor=colors.black,
+            spaceAfter=6,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'TicketSubtitle',
+            parent=styles['Normal'],
+            fontSize=8,
+            alignment=TA_CENTER,
+            spaceAfter=3
+        )
+        
+        normal_style = ParagraphStyle(
+            'TicketNormal',
+            parent=styles['Normal'],
+            fontSize=8,
+            spaceAfter=2
+        )
+        
+        # Obtener configuración
+        config = ConfiguracionEmpresa.query.first()
+
+        # Encabezado con logo
+        agregar_logo_pdf(elements, config, ticket_width)
+        elements.append(Paragraph(f"<b>{config.nombre if config else 'CELLSTORE'}</b>", title_style))
+        elements.append(Paragraph(f"NIT: {config.nit if config else '900.123.456-7'}", subtitle_style))
+        elements.append(Paragraph(f"Tel: {config.telefono if config else '(601) 234-5678'}", subtitle_style))
+        elements.append(Spacer(1, 0.1 * inch))
+        elements.append(Paragraph("<b>FACTURA DE VENTA</b>", title_style))
+        elements.append(Paragraph(f"No: {trans.id:06d}", subtitle_style))
+        elements.append(Paragraph(f"Fecha: {trans.fecha.strftime('%d/%m/%Y %H:%M')}", subtitle_style))
+        elements.append(Spacer(1, 0.1 * inch))
+
+        # Línea separadora
+        elements.append(Paragraph("=" * 40, subtitle_style))
+
+        # Información del cliente
+        if cliente_nombre and cliente_nombre != 'Consumidor Final':
+            elements.append(Paragraph(f"<b>Cliente:</b> {cliente_nombre}", normal_style))
+            if cliente_cedula:
+                elements.append(Paragraph(f"<b>CC/NIT:</b> {cliente_cedula}", normal_style))
+            if cliente_telefono:
+                elements.append(Paragraph(f"<b>Tel:</b> {cliente_telefono}", normal_style))
+            if cliente_direccion:
+                elements.append(Paragraph(f"<b>Dir:</b> {cliente_direccion}", normal_style))
+            elements.append(Spacer(1, 0.05 * inch))
+
+        elements.append(Paragraph("=" * 40, subtitle_style))
+        elements.append(Spacer(1, 0.05 * inch))
+
+        # Detalles del producto
+        elements.append(Paragraph("<b>PRODUCTO</b>", normal_style))
+        elements.append(Paragraph(f"{celular.modelo}", normal_style))
+        elements.append(Paragraph(f"{celular.gb}GB{' - ' + celular.color if celular.color else ''}", normal_style))
+        elements.append(Paragraph(f"<b>IMEI:</b> {celular.imei1}", normal_style))
+        elements.append(Spacer(1, 0.05 * inch))
+
+        # Tabla de precio (simple)
+        datos_precio = [
+            ['Cantidad', 'P. Unit', 'Total'],
+            ['1', formato_pesos(monto), formato_pesos(monto)]
+        ]
+
+        col_width = (ticket_width - 10) / 3
+        table_precio = Table(datos_precio, colWidths=[col_width, col_width, col_width])
+        table_precio.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('LINEBELOW', (0, 0), (-1, 0), 1, colors.black),
+            ('LINEABOVE', (0, 1), (-1, 1), 0.5, colors.grey),
+        ]))
+        elements.append(table_precio)
+        elements.append(Spacer(1, 0.1 * inch))
+
+        # Totales
+        elements.append(Paragraph("=" * 40, subtitle_style))
+        total_data = [
+            ['Subtotal:', formato_pesos(monto)],
+            ['IVA (0%):', '$0'],
+            ['TOTAL:', formato_pesos(monto)]
+        ]
+
+        table_total = Table(total_data, colWidths=[(ticket_width - 10) * 0.5, (ticket_width - 10) * 0.5])
+        table_total.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, 1), 9),
+            ('FONTSIZE', (0, 2), (-1, 2), 10),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+            ('LINEABOVE', (0, 2), (-1, 2), 1, colors.black),
+        ]))
+        elements.append(table_total)
+        elements.append(Spacer(1, 0.1 * inch))
+
+        # Información adicional
+        bold_style = ParagraphStyle('Bold', parent=normal_style, fontName='Helvetica-Bold')
+        elements.append(Paragraph(f"Pago: {metodo_pago}", bold_style))
+        elements.append(Paragraph(f"Tipo: {sub_tipo}", bold_style))
+        elements.append(Spacer(1, 0.15 * inch))
+
+        # Pie de página
+        elements.append(Paragraph("=" * 40, subtitle_style))
+        if config and config.instagram_url:
+            elements.append(Paragraph("Síguenos en Instagram", subtitle_style))
+            agregar_qr_pdf(elements, config, size=70)
+        elements.append(Paragraph("<i>Gracias por su compra</i>", subtitle_style))
+        elements.append(Paragraph("<i>Sin validez fiscal</i>", subtitle_style))
+        
+        # Construir PDF
+        doc.build(elements)
+        buffer.seek(0)
+        
+        # Enviar PDF
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"Factura_{trans.id:06d}_{celular.modelo.replace(' ', '_')}.pdf",
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # === VERIFICAR IMEI Y REACTIVAR CELULAR ===
 @app.route('/verificar_imei/<imei>')
 @login_required
@@ -1340,6 +1633,189 @@ def vender(id):
     flash(f'¡{celular.modelo} vendido como {sub_tipo}! Ganancia Neta: ${int(ganancia_neta):,}'.replace(',', '.'), 'success')
     return redirect(url_for('index'))
 
+@app.route('/generar_factura/<int:celular_id>', methods=['POST'])
+@login_required
+def generar_factura(celular_id):
+    """Genera una factura PDF para la venta de un celular"""
+    celular = Celular.query.get_or_404(celular_id)
+    
+    # Obtener datos del formulario
+    tipo_venta = request.form.get('tipo_venta')  # 'patinado' o 'cliente'
+    cliente_nombre = request.form.get('cliente_nombre', 'Consumidor Final')
+    cliente_cedula = request.form.get('cliente_cedula', '')
+    cliente_telefono = request.form.get('cliente_telefono', '')
+    cliente_direccion = request.form.get('cliente_direccion', '')
+    metodo_pago = request.form.get('metodo_pago', 'Efectivo')
+    
+    # Determinar precio según tipo de venta
+    if tipo_venta == 'patinado':
+        monto = celular.precio_patinado
+        sub_tipo = 'Patinado'
+        celular.estado = 'Patinado'
+    else:
+        monto = celular.precio_cliente
+        sub_tipo = 'Cliente'
+        celular.estado = 'Vendido'
+    
+    # Calcular ganancia neta
+    ganancia_neta = monto - celular.precio_compra
+    
+    # Marcar como vendido
+    celular.en_stock = False
+    
+    # Crear transacción
+    descripcion = f'Venta {sub_tipo} {celular.modelo} IMEI1 {celular.imei1} - Cliente: {cliente_nombre}'
+    trans = Transaccion(tipo='Venta', monto=monto, ganancia_neta=ganancia_neta, descripcion=descripcion)
+    db.session.add(trans)
+    db.session.commit()
+    
+    # Generar PDF formato ticket térmico 80mm
+    buffer = BytesIO()
+    # Ancho: 76mm = 2.99 inches, alto variable
+    ticket_width = 76 * 2.83465  # 76mm en puntos (1mm = 2.83465 puntos)
+    ticket_height = 11 * inch  # Alto inicial, se ajusta automático
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=(ticket_width, ticket_height),
+        rightMargin=5,
+        leftMargin=5,
+        topMargin=5,
+        bottomMargin=5
+    )
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Estilos personalizados para ticket
+    title_style = ParagraphStyle(
+        'TicketTitle',
+        parent=styles['Heading1'],
+        fontSize=12,
+        textColor=colors.black,
+        spaceAfter=6,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'TicketSubtitle',
+        parent=styles['Normal'],
+        fontSize=8,
+        alignment=TA_CENTER,
+        spaceAfter=3
+    )
+    
+    normal_style = ParagraphStyle(
+        'TicketNormal',
+        parent=styles['Normal'],
+        fontSize=8,
+        spaceAfter=2
+    )
+    
+    # Obtener configuración
+    config = ConfiguracionEmpresa.query.first()
+    
+    # Encabezado con logo
+    agregar_logo_pdf(elements, config, ticket_width)
+    elements.append(Paragraph(f"<b>{config.nombre if config else 'CELLSTORE'}</b>", title_style))
+    elements.append(Paragraph(f"NIT: {config.nit if config else '900.123.456-7'}", subtitle_style))
+    elements.append(Paragraph(f"Tel: {config.telefono if config else '(601) 234-5678'}", subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    elements.append(Paragraph("<b>FACTURA DE VENTA</b>", title_style))
+    elements.append(Paragraph(f"No: {trans.id:06d}", subtitle_style))
+    elements.append(Paragraph(f"Fecha: {trans.fecha.strftime('%d/%m/%Y %H:%M')}", subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Línea separadora
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    
+    # Información del cliente
+    if cliente_nombre and cliente_nombre != 'Consumidor Final':
+        elements.append(Paragraph(f"<b>Cliente:</b> {cliente_nombre}", normal_style))
+        if cliente_cedula:
+            elements.append(Paragraph(f"<b>CC/NIT:</b> {cliente_cedula}", normal_style))
+        if cliente_telefono:
+            elements.append(Paragraph(f"<b>Tel:</b> {cliente_telefono}", normal_style))
+        if cliente_direccion:
+            elements.append(Paragraph(f"<b>Dir:</b> {cliente_direccion}", normal_style))
+        elements.append(Spacer(1, 0.05 * inch))
+    
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    elements.append(Spacer(1, 0.05 * inch))
+    
+    # Detalles del producto
+    elements.append(Paragraph("<b>PRODUCTO</b>", normal_style))
+    elements.append(Paragraph(f"{celular.modelo}", normal_style))
+    elements.append(Paragraph(f"{celular.gb}GB{' - ' + celular.color if celular.color else ''}", normal_style))
+    elements.append(Paragraph(f"<b>IMEI:</b> {celular.imei1}", normal_style))
+    elements.append(Spacer(1, 0.05 * inch))
+    
+    # Tabla de precio (simple)
+    datos_precio = [
+        ['Cantidad', 'P. Unit', 'Total'],
+        ['1', formato_pesos(monto), formato_pesos(monto)]
+    ]
+    
+    col_width = (ticket_width - 10) / 3
+    table_precio = Table(datos_precio, colWidths=[col_width, col_width, col_width])
+    table_precio.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, colors.black),
+        ('LINEABOVE', (0, 1), (-1, 1), 0.5, colors.grey),
+    ]))
+    elements.append(table_precio)
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Totales
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    total_data = [
+        ['Subtotal:', formato_pesos(monto)],
+        ['IVA (0%):', '$0'],
+        ['TOTAL:', formato_pesos(monto)]
+    ]
+    
+    table_total = Table(total_data, colWidths=[(ticket_width - 10) * 0.5, (ticket_width - 10) * 0.5])
+    table_total.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, 1), 9),
+        ('FONTSIZE', (0, 2), (-1, 2), 10),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+        ('LINEABOVE', (0, 2), (-1, 2), 1, colors.black),
+    ]))
+    elements.append(table_total)
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Información adicional
+    elements.append(Paragraph(f"<b>Pago:</b> {metodo_pago}", normal_style))
+    elements.append(Paragraph(f"<b>Tipo:</b> {sub_tipo}", normal_style))
+    elements.append(Spacer(1, 0.15 * inch))
+    
+    # Pie de página
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    if config and config.instagram_url:
+        elements.append(Paragraph("Síguenos en Instagram", subtitle_style))
+        agregar_qr_pdf(elements, config, size=70)
+    elements.append(Paragraph("<i>Gracias por su compra</i>", subtitle_style))
+    elements.append(Paragraph("<i>Sin validez fiscal</i>", subtitle_style))
+    
+    # Construir PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    # Enviar PDF
+    filename = f"Factura_{trans.id:06d}_{celular.modelo.replace(' ', '_')}.pdf"
+    
+    flash(f'¡{celular.modelo} vendido como {sub_tipo}! Factura generada.', 'success')
+    
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/pdf'
+    )
+
 @app.route('/retoma', methods=['POST'])
 @login_required
 def retoma():
@@ -1514,8 +1990,143 @@ def retoma():
         db.session.add(deuda)
         db.session.commit()
 
-    flash(f'¡Plan Retoma registrado! Teléfono {celular.modelo} vendido. Recibido: ${cash_recibido}. Saldo pendiente: ${saldo_pendiente if saldo_pendiente > 0 else "Ninguno"}', 'success')
-    return redirect(url_for('index'))
+    # Generar PDF de retoma formato ticket térmico 80mm
+    buffer = BytesIO()
+    ticket_width = 76 * 2.83465
+    ticket_height = 11 * inch
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=(ticket_width, ticket_height),
+        rightMargin=5,
+        leftMargin=5,
+        topMargin=5,
+        bottomMargin=5
+    )
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Estilos personalizados
+    title_style = ParagraphStyle(
+        'TicketTitle',
+        parent=styles['Heading1'],
+        fontSize=12,
+        textColor=colors.black,
+        spaceAfter=6,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'TicketSubtitle',
+        parent=styles['Normal'],
+        fontSize=8,
+        alignment=TA_CENTER,
+        spaceAfter=3
+    )
+    
+    normal_style = ParagraphStyle(
+        'TicketNormal',
+        parent=styles['Normal'],
+        fontSize=8,
+        spaceAfter=2
+    )
+    
+    bold_style = ParagraphStyle('Bold', parent=normal_style, fontName='Helvetica-Bold')
+    
+    # Obtener configuración
+    config = ConfiguracionEmpresa.query.first()
+    
+    # Encabezado con logo
+    agregar_logo_pdf(elements, config, ticket_width)
+    elements.append(Paragraph(f"<b>{config.nombre if config else 'CELLSTORE'}</b>", title_style))
+    elements.append(Paragraph(f"NIT: {config.nit if config else '900.123.456-7'}", subtitle_style))
+    elements.append(Paragraph(f"Tel: {config.telefono if config else '(601) 234-5678'}", subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    elements.append(Paragraph("<b>PLAN RETOMA</b>", title_style))
+    elements.append(Paragraph(f"No: {trans.id:06d}", subtitle_style))
+    elements.append(Paragraph(f"{trans.fecha.strftime('%d/%m/%Y %H:%M')}", subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Línea separadora
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    
+    # Cliente
+    elements.append(Paragraph(f"<b>Cliente:</b> {cliente_nombre}", normal_style))
+    elements.append(Spacer(1, 0.05 * inch))
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    elements.append(Spacer(1, 0.05 * inch))
+    
+    # Celular vendido
+    elements.append(Paragraph("<b>CELULAR VENDIDO</b>", bold_style))
+    elements.append(Paragraph(f"{celular.modelo}", normal_style))
+    elements.append(Paragraph(f"{celular.gb}GB{' - ' + celular.color if celular.color else ''}", normal_style))
+    elements.append(Paragraph(f"<b>IMEI:</b> {celular.imei1}", normal_style))
+    elements.append(Paragraph(f"<b>Precio:</b> {formato_pesos(total_venta)}", normal_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Items recibidos
+    elements.append(Paragraph("<b>RECIBIDO EN RETOMA</b>", bold_style))
+    elements.append(Spacer(1, 0.03 * inch))
+    for item_desc in items_descripciones:
+        # Buscar el valor en la descripción (simplificado, usa el total)
+        elements.append(Paragraph(f"• {item_desc}", normal_style))
+    elements.append(Spacer(1, 0.05 * inch))
+    elements.append(Paragraph(f"<b>Valor total retoma:</b> {formato_pesos(total_valor_estimado)}", normal_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Desglose de pago
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    pago_data = [
+        ['Precio celular:', formato_pesos(total_venta)],
+        ['Items retoma:', f'-{formato_pesos(total_valor_estimado)}'],
+        ['Cash recibido:', f'-{formato_pesos(cash_recibido)}'],
+    ]
+    
+    table_pago = Table(pago_data, colWidths=[(ticket_width - 10) * 0.5, (ticket_width - 10) * 0.5])
+    table_pago.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+    ]))
+    elements.append(table_pago)
+    
+    # Saldo
+    saldo_data = [['SALDO:', formato_pesos(saldo_pendiente) if saldo_pendiente > 0 else '$0']]
+    table_saldo = Table(saldo_data, colWidths=[(ticket_width - 10) * 0.5, (ticket_width - 10) * 0.5])
+    table_saldo.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('LINEABOVE', (0, 0), (-1, 0), 1, colors.black),
+    ]))
+    elements.append(table_saldo)
+    
+    if saldo_pendiente > 0:
+        elements.append(Spacer(1, 0.05 * inch))
+        elements.append(Paragraph(f"<b>Vencimiento:</b> {(obtener_fecha_bogota().date() + timedelta(days=30)).strftime('%d/%m/%Y')}", normal_style))
+    
+    elements.append(Spacer(1, 0.15 * inch))
+    
+    # Pie de página
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    if config and config.instagram_url:
+        elements.append(Paragraph("Síguenos en Instagram", subtitle_style))
+        agregar_qr_pdf(elements, config, size=70)
+    elements.append(Paragraph("<i>Gracias por su compra</i>", subtitle_style))
+    elements.append(Paragraph("<i>Sin validez fiscal</i>", subtitle_style))
+    
+    # Construir PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    # Enviar PDF
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"Retoma_{trans.id:06d}_{celular.modelo.replace(' ', '_')}.pdf",
+        mimetype='application/pdf'
+    )
 
 
 @app.route('/terceros', methods=['POST'])
@@ -1590,8 +2201,53 @@ def configuracion_empresa():
     if current_user.role != 'Admin':
         flash('Acceso denegado.', 'error')
         return redirect(url_for('index'))
-    # Placeholder para configuración de empresa
-    return render_template('configuracion.html', user=current_user)
+    config = ConfiguracionEmpresa.query.first()
+    return render_template('configuracion.html', user=current_user, config=config)
+
+@app.route('/guardar_configuracion', methods=['POST'])
+@login_required
+def guardar_configuracion():
+    if current_user.role != 'Admin':
+        flash('Acceso denegado.', 'error')
+        return redirect(url_for('configuracion_empresa'))
+    
+    config = ConfiguracionEmpresa.query.first()
+    if not config:
+        config = ConfiguracionEmpresa()
+        db.session.add(config)
+    
+    config.nombre = request.form.get('nombre', 'CellStore')
+    config.nit = request.form.get('nit', '900.123.456-7')
+    config.telefono = request.form.get('telefono', '(601) 234-5678')
+    config.direccion = request.form.get('direccion', '')
+    config.email = request.form.get('email', '')
+    config.instagram_url = request.form.get('instagram_url', '')
+    
+    # Manejar subida de logo
+    if 'logo' in request.files:
+        file = request.files['logo']
+        if file and file.filename and allowed_file(file.filename):
+            # Crear directorio si no existe
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            
+            # Eliminar logo anterior si existe
+            if config.logo_filename:
+                old_path = os.path.join(app.config['UPLOAD_FOLDER'], config.logo_filename)
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+            
+            # Guardar nuevo logo
+            filename = secure_filename(file.filename)
+            # Agregar timestamp para evitar cache
+            name, ext = os.path.splitext(filename)
+            filename = f"logo_{int(datetime.now().timestamp())}{ext}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            config.logo_filename = filename
+    
+    db.session.commit()
+    flash('Configuración guardada exitosamente.', 'success')
+    return redirect(url_for('configuracion_empresa'))
 
 if __name__ == '__main__':
     app.run(debug=True)
