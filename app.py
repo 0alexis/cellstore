@@ -531,13 +531,36 @@ def caja():
 @login_required
 def stock():
     """Vista general de stock (celulares + dispositivos)"""
-    # Celulares
-    celulares = Celular.query.filter_by(en_stock=True).all()
+    # Obtener parámetro de ordenamiento
+    orden = request.args.get('orden', 'recientes')  # recientes, antiguos, modelo
+    
+    # Celulares con ordenamiento
+    celulares_query = Celular.query.filter_by(en_stock=True)
+    if orden == 'recientes':
+        celulares_query = celulares_query.order_by(Celular.fecha_entrada.desc())
+    elif orden == 'antiguos':
+        celulares_query = celulares_query.order_by(Celular.fecha_entrada.asc())
+    elif orden == 'modelo':
+        celulares_query = celulares_query.order_by(Celular.modelo.asc())
+    else:
+        celulares_query = celulares_query.order_by(Celular.fecha_entrada.desc())
+    
+    celulares = celulares_query.all()
     cantidad_celulares = len(celulares)
     inversion_celulares = sum((c.precio_compra or 0) for c in celulares)
     
-    # Dispositivos
-    dispositivos_list = Dispositivo.query.filter_by(en_stock=True).all()
+    # Dispositivos con ordenamiento
+    dispositivos_query = Dispositivo.query.filter_by(en_stock=True)
+    if orden == 'recientes':
+        dispositivos_query = dispositivos_query.order_by(Dispositivo.fecha_entrada.desc())
+    elif orden == 'antiguos':
+        dispositivos_query = dispositivos_query.order_by(Dispositivo.fecha_entrada.asc())
+    elif orden == 'modelo':
+        dispositivos_query = dispositivos_query.order_by(Dispositivo.modelo.asc())
+    else:
+        dispositivos_query = dispositivos_query.order_by(Dispositivo.fecha_entrada.desc())
+    
+    dispositivos_list = dispositivos_query.all()
     cantidad_dispositivos = len(dispositivos_list)
     inversion_dispositivos = sum((d.precio_compra * d.cantidad or 0) for d in dispositivos_list)
     
@@ -551,6 +574,7 @@ def stock():
                           total_items=total_items,
                           inversion_celulares=inversion_celulares, inversion_dispositivos=inversion_dispositivos,
                           inversion_total=inversion_total,
+                          orden=orden,
                           user=current_user)
 
 @app.route('/dispositivos', methods=['GET', 'POST'])
@@ -803,6 +827,10 @@ def api_cambiar_estado_dispositivo(id):
 def api_vender_dispositivo(id):
     dispositivo = Dispositivo.query.get_or_404(id)
     
+    # Verificar que el dispositivo aún esté en stock para evitar doble venta
+    if not dispositivo.en_stock:
+        return jsonify({'success': False, 'error': 'Este dispositivo ya fue vendido'}), 400
+    
     try:
         precio_venta = dispositivo.precio_cliente * dispositivo.cantidad
         precio_compra = dispositivo.precio_compra * dispositivo.cantidad
@@ -949,6 +977,11 @@ def vender_dispositivo(id):
     tipo_filtro = request.form.get('tipo', '')
     estado_filtro = request.form.get('estado', '')
     orden = request.form.get('orden', 'ultimos')
+    
+    # Verificar que el dispositivo aún esté en stock para evitar doble venta
+    if not dispositivo.en_stock:
+        flash('Este dispositivo ya fue vendido', 'error')
+        return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
     
     try:
         # Calcular ganancia neta
@@ -1136,6 +1169,11 @@ def retoma_dispositivo(id):
 def api_vender_celular(id):
     """API para vender celular sin factura"""
     celular = Celular.query.get_or_404(id)
+    
+    # Verificar que el celular aún esté en stock para evitar doble venta
+    if not celular.en_stock:
+        return jsonify({'success': False, 'error': 'Este celular ya fue vendido'}), 400
+    
     data = request.get_json() or {}
     tipo_venta = data.get('tipo_venta', 'cliente')
     
@@ -1170,6 +1208,11 @@ def api_vender_celular(id):
 def api_generar_factura_celular(id):
     """API para vender celular con factura PDF"""
     celular = Celular.query.get_or_404(id)
+    
+    # Verificar que el celular aún esté en stock para evitar doble venta
+    if not celular.en_stock:
+        return jsonify({'success': False, 'error': 'Este celular ya fue vendido'}), 400
+    
     data = request.get_json() or {}
     
     tipo_venta = data.get('tipo_venta', 'cliente')
@@ -1203,7 +1246,7 @@ def api_generar_factura_celular(id):
         buffer = BytesIO()
         # Ancho: 76mm = 2.99 inches, alto variable
         ticket_width = 76 * 2.83465  # 76mm en puntos (1mm = 2.83465 puntos)
-        ticket_height = 11 * inch  # Alto inicial, se ajusta automático
+        ticket_height = 14 * inch  # Alto inicial, ajustado para términos de garantía
         doc = SimpleDocTemplate(
             buffer, 
             pagesize=(ticket_width, ticket_height),
@@ -1276,7 +1319,9 @@ def api_generar_factura_celular(id):
         elements.append(Paragraph("<b>PRODUCTO</b>", normal_style))
         elements.append(Paragraph(f"{celular.modelo}", normal_style))
         elements.append(Paragraph(f"{celular.gb}GB{' - ' + celular.color if celular.color else ''}", normal_style))
-        elements.append(Paragraph(f"<b>IMEI:</b> {celular.imei1}", normal_style))
+        elements.append(Paragraph("<b>IMEI 1:</b> {}".format(celular.imei1), normal_style))
+        if celular.imei2:
+            elements.append(Paragraph("<b>IMEI 2:</b> {}".format(celular.imei2), normal_style))
         elements.append(Spacer(1, 0.05 * inch))
 
         # Tabla de precio (simple)
@@ -1329,7 +1374,35 @@ def api_generar_factura_celular(id):
             elements.append(Paragraph("Síguenos en Instagram", subtitle_style))
             agregar_qr_pdf(elements, config, size=70)
         elements.append(Paragraph("<i>Gracias por su compra</i>", subtitle_style))
+        elements.append(Spacer(1, 0.1 * inch))
+        
+        # Términos de garantía
+        garantia_style = ParagraphStyle(
+            'GarantiaStyle',
+            parent=styles['Normal'],
+            fontSize=6,
+            leading=7,
+            spaceAfter=2,
+            alignment=TA_CENTER
+        )
+        elements.append(Paragraph("-" * 40, subtitle_style))
+        elements.append(Paragraph("<b>TÉRMINOS DE GARANTÍA</b>", garantia_style))
+        elements.append(Paragraph("Garantía de IMEI de por vida.", garantia_style))
+        elements.append(Paragraph("Garantía por funcionamiento: 2 meses.", garantia_style))
+        elements.append(Paragraph("La garantía NO cubre: daños por maltrato, golpes, humedad, display, táctil, sobrecarga o equipos apagados.", garantia_style))
+        elements.append(Paragraph("La garantía NO cubre modificación de software mal instalado por cliente, ni daños al software original.", garantia_style))
+        elements.append(Paragraph("<b>SIN FACTURA NO HAY GARANTÍA.</b>", garantia_style))
+        elements.append(Paragraph("Si el daño no está cubierto por garantía, debe cancelarse el costo de revisión y/o arreglo.", garantia_style))
+        elements.append(Paragraph("Equipos con bloqueo de registro no tienen garantía.", garantia_style))
+        elements.append(Paragraph("-" * 40, subtitle_style))
+        elements.append(Spacer(1, 0.05 * inch))
         elements.append(Paragraph("<i>Sin validez fiscal</i>", subtitle_style))
+        
+        # Línea de firma del cliente
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph("_" * 30, subtitle_style))
+        elements.append(Paragraph("<b>Firma del Cliente</b>", subtitle_style))
+        elements.append(Spacer(1, 0.1 * inch))
         
         # Construir PDF
         doc.build(elements)
@@ -1612,6 +1685,12 @@ def corregir_transaccion(id):
 @login_required
 def vender(id):
     celular = Celular.query.get_or_404(id)
+    
+    # Verificar que el celular aún esté en stock para evitar doble venta
+    if not celular.en_stock:
+        flash('Este celular ya fue vendido', 'error')
+        return redirect(url_for('index'))
+    
     tipo_venta = request.form.get('tipo_venta')  # 'patinado' o 'cliente'
     if tipo_venta == 'patinado':
         monto = celular.precio_patinado
@@ -1638,6 +1717,11 @@ def vender(id):
 def generar_factura(celular_id):
     """Genera una factura PDF para la venta de un celular"""
     celular = Celular.query.get_or_404(celular_id)
+    
+    # Verificar que el celular aún esté en stock para evitar doble venta
+    if not celular.en_stock:
+        flash('Este celular ya fue vendido', 'error')
+        return redirect(url_for('index'))
     
     # Obtener datos del formulario
     tipo_venta = request.form.get('tipo_venta')  # 'patinado' o 'cliente'
@@ -1673,7 +1757,7 @@ def generar_factura(celular_id):
     buffer = BytesIO()
     # Ancho: 76mm = 2.99 inches, alto variable
     ticket_width = 76 * 2.83465  # 76mm en puntos (1mm = 2.83465 puntos)
-    ticket_height = 11 * inch  # Alto inicial, se ajusta automático
+    ticket_height = 14 * inch  # Alto ajustado para términos de garantía
     doc = SimpleDocTemplate(
         buffer, 
         pagesize=(ticket_width, ticket_height),
@@ -1746,7 +1830,9 @@ def generar_factura(celular_id):
     elements.append(Paragraph("<b>PRODUCTO</b>", normal_style))
     elements.append(Paragraph(f"{celular.modelo}", normal_style))
     elements.append(Paragraph(f"{celular.gb}GB{' - ' + celular.color if celular.color else ''}", normal_style))
-    elements.append(Paragraph(f"<b>IMEI:</b> {celular.imei1}", normal_style))
+    elements.append(Paragraph(f"<b>IMEI 1:</b> {celular.imei1}", normal_style))
+    if celular.imei2:
+        elements.append(Paragraph(f"<b>IMEI 2:</b> {celular.imei2}", normal_style))
     elements.append(Spacer(1, 0.05 * inch))
     
     # Tabla de precio (simple)
@@ -1798,7 +1884,35 @@ def generar_factura(celular_id):
         elements.append(Paragraph("Síguenos en Instagram", subtitle_style))
         agregar_qr_pdf(elements, config, size=70)
     elements.append(Paragraph("<i>Gracias por su compra</i>", subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Términos de garantía
+    garantia_style = ParagraphStyle(
+        'GarantiaStyle',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+        spaceAfter=2,
+        alignment=TA_CENTER
+    )
+    elements.append(Paragraph("-" * 40, subtitle_style))
+    elements.append(Paragraph("<b>TÉRMINOS DE GARANTÍA</b>", garantia_style))
+    elements.append(Paragraph("Garantía de IMEI de por vida.", garantia_style))
+    elements.append(Paragraph("Garantía por funcionamiento: 2 meses.", garantia_style))
+    elements.append(Paragraph("La garantía NO cubre: daños por maltrato, golpes, humedad, display, táctil, sobrecarga o equipos apagados.", garantia_style))
+    elements.append(Paragraph("La garantía NO cubre modificación de software mal instalado por cliente, ni daños al software original.", garantia_style))
+    elements.append(Paragraph("<b>SIN FACTURA NO HAY GARANTÍA.</b>", garantia_style))
+    elements.append(Paragraph("Si el daño no está cubierto por garantía, debe cancelarse el costo de revisión y/o arreglo.", garantia_style))
+    elements.append(Paragraph("Equipos con bloqueo de registro no tienen garantía.", garantia_style))
+    elements.append(Paragraph("-" * 40, subtitle_style))
+    elements.append(Spacer(1, 0.05 * inch))
     elements.append(Paragraph("<i>Sin validez fiscal</i>", subtitle_style))
+    
+    # Línea de firma del cliente
+    elements.append(Spacer(1, 0.3 * inch))
+    elements.append(Paragraph("_" * 30, subtitle_style))
+    elements.append(Paragraph("<b>Firma del Cliente</b>", subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
     
     # Construir PDF
     doc.build(elements)
@@ -1993,7 +2107,7 @@ def retoma():
     # Generar PDF de retoma formato ticket térmico 80mm
     buffer = BytesIO()
     ticket_width = 76 * 2.83465
-    ticket_height = 11 * inch
+    ticket_height = 14 * inch  # Ajustado para términos de garantía
     doc = SimpleDocTemplate(
         buffer, 
         pagesize=(ticket_width, ticket_height),
@@ -2060,7 +2174,9 @@ def retoma():
     elements.append(Paragraph("<b>CELULAR VENDIDO</b>", bold_style))
     elements.append(Paragraph(f"{celular.modelo}", normal_style))
     elements.append(Paragraph(f"{celular.gb}GB{' - ' + celular.color if celular.color else ''}", normal_style))
-    elements.append(Paragraph(f"<b>IMEI:</b> {celular.imei1}", normal_style))
+    elements.append(Paragraph(f"<b>IMEI 1:</b> {celular.imei1}", normal_style))
+    if celular.imei2:
+        elements.append(Paragraph(f"<b>IMEI 2:</b> {celular.imei2}", normal_style))
     elements.append(Paragraph(f"<b>Precio:</b> {formato_pesos(total_venta)}", normal_style))
     elements.append(Spacer(1, 0.1 * inch))
     
@@ -2114,7 +2230,34 @@ def retoma():
         elements.append(Paragraph("Síguenos en Instagram", subtitle_style))
         agregar_qr_pdf(elements, config, size=70)
     elements.append(Paragraph("<i>Gracias por su compra</i>", subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Términos de garantía
+    garantia_style = ParagraphStyle(
+        'GarantiaStyle',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+        spaceAfter=2,
+        alignment=TA_CENTER
+    )
+    elements.append(Paragraph("-" * 40, subtitle_style))
+    elements.append(Paragraph("<b>TÉRMINOS DE GARANTÍA</b>", garantia_style))
+    elements.append(Paragraph("Garantía de IMEI de por vida.", garantia_style))
+    elements.append(Paragraph("Garantía por funcionamiento: 2 meses.", garantia_style))
+    elements.append(Paragraph("La garantía NO cubre: daños por maltrato, golpes, humedad, display, táctil, sobrecarga o equipos apagados.", garantia_style))
+    elements.append(Paragraph("La garantía NO cubre modificación de software mal instalado por cliente, ni daños al software original.", garantia_style))
+    elements.append(Paragraph("<b>SIN FACTURA NO HAY GARANTÍA.</b>", garantia_style))
+    elements.append(Paragraph("Si el daño no está cubierto por garantía, debe cancelarse el costo de revisión y/o arreglo.", garantia_style))
+    elements.append(Paragraph("Equipos con bloqueo de registro no tienen garantía.", garantia_style))
+    elements.append(Paragraph("-" * 40, subtitle_style))
+    elements.append(Spacer(1, 0.05 * inch))
     elements.append(Paragraph("<i>Sin validez fiscal</i>", subtitle_style))
+    
+    # Línea de firma del cliente
+    elements.append(Spacer(1, 0.3 * inch))
+    elements.append(Paragraph("_" * 30, subtitle_style))
+    elements.append(Paragraph("<b>Firma del Cliente</b>", subtitle_style))
     
     # Construir PDF
     doc.build(elements)

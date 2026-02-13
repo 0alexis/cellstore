@@ -1,17 +1,6 @@
 {% extends "base.html" %}
 {% block page_content %}
-<!-- Navegación -->
-<nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
-    <div class="container">
-        <ul class="navbar-nav me-auto">
-            <li class="nav-item"><a class="nav-link active" href="{{ url_for('stock') }}">Stock</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Celulares</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('dispositivos') }}">Dispositivos</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('caja') }}">Caja</a></li>
-        </ul>
-        <span class="navbar-text">Rol: {{ user.role }} | Usuario: {{ user.username }}</span>
-    </div>
-</nav>
+
 
 <h2 class="mb-4">Stock General</h2>
 
@@ -103,6 +92,24 @@
     </div>
 </div>
 
+<!-- Filtro de ordenamiento -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-body py-2">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <span class="fw-bold me-2">📅 Ordenar por:</span>
+            <a href="{{ url_for('stock', orden='recientes') }}" class="btn btn-sm {% if orden == 'recientes' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                🕐 Más recientes
+            </a>
+            <a href="{{ url_for('stock', orden='antiguos') }}" class="btn btn-sm {% if orden == 'antiguos' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                📆 Más antiguos
+            </a>
+            <a href="{{ url_for('stock', orden='modelo') }}" class="btn btn-sm {% if orden == 'modelo' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                🔤 Por modelo
+            </a>
+        </div>
+    </div>
+</div>
+
 <!-- Tabs para cambiar entre celulares y dispositivos -->
 <ul class="nav nav-tabs mb-4" id="stockTabs" role="tablist">
     <li class="nav-item" role="presentation">
@@ -132,6 +139,7 @@
                         <th>Precio Cliente</th>
                         <th>Precio Patinado</th>
                         <th>Estado</th>
+                        <th>Ingreso</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
@@ -151,13 +159,22 @@
                                 </span>
                             </td>
                             <td>
+                                {% if c.fecha_entrada %}
+                                <span class="badge bg-light text-dark border" title="Fecha de ingreso">
+                                    📅 {{ c.fecha_entrada.strftime('%d/%m/%Y') }}
+                                </span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
                                 <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-primary">Ver Detalles</a>
                             </td>
                         </tr>
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="8" class="text-center py-4">No hay celulares en stock</td>
+                            <td colspan="9" class="text-center py-4">No hay celulares en stock</td>
                         </tr>
                     {% endif %}
                 </tbody>
@@ -176,9 +193,10 @@
                         <th>Modelo</th>
                         <th>Cantidad</th>
                         <th>Precio Compra</th>
-                        <th>Precio Venta</th>
+                        <th>Precio Cliente</th>
                         <th>Total Inv.</th>
                         <th>Estado</th>
+                        <th>Ingreso</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
@@ -191,12 +209,21 @@
                             <td>{{ d.modelo }}</td>
                             <td>{{ d.cantidad }}</td>
                             <td>{{ d.precio_compra|pesos }}</td>
-                            <td>{{ d.precio_venta|pesos }}</td>
+                            <td>{{ d.precio_cliente|pesos }}</td>
                             <td><strong>{{ (d.precio_compra * d.cantidad)|pesos }}</strong></td>
                             <td>
                                 <span class="badge bg-{% if d.estado == 'disponible' %}success{% elif d.estado == 'vendido' %}danger{% elif d.estado == 'dañado' %}warning{% else %}secondary{% endif %}">
                                     {{ d.estado }}
                                 </span>
+                            </td>
+                            <td>
+                                {% if d.fecha_entrada %}
+                                <span class="badge bg-light text-dark border" title="Fecha de ingreso">
+                                    📅 {{ d.fecha_entrada.strftime('%d/%m/%Y') }}
+                                </span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
                             </td>
                             <td>
                                 <a href="{{ url_for('dispositivos') }}" class="btn btn-sm btn-outline-primary">Ver Detalles</a>
@@ -205,7 +232,7 @@
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="9" class="text-center py-4">No hay dispositivos en stock</td>
+                            <td colspan="10" class="text-center py-4">No hay dispositivos en stock</td>
                         </tr>
                     {% endif %}
                 </tbody>

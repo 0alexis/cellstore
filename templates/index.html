@@ -1328,6 +1328,17 @@
     
     document.querySelectorAll('form[action*="retoma"]').forEach(form => {
         form.addEventListener('submit', function(e) {
+            // Prevenir doble envío
+            const btnSubmit = form.querySelector('button[type="submit"]');
+            if (btnSubmit) {
+                if (btnSubmit.disabled) {
+                    e.preventDefault();
+                    return false;
+                }
+                btnSubmit.disabled = true;
+                btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Procesando...';
+            }
+            
             // Construimos inputs ocultos para forzar que todos los ítems viajen en orden.
             this.querySelectorAll('input.__retoma_temp').forEach(el => el.remove());
 
@@ -1411,6 +1422,14 @@
     }
     
     function confirmarVentaCel(id) {
+        // Prevenir doble clic - buscar y deshabilitar el botón
+        const btnConfirmar = document.querySelector(`#ventaModal${id} .btn-success`);
+        if (btnConfirmar) {
+            if (btnConfirmar.disabled) return; // Ya se está procesando
+            btnConfirmar.disabled = true;
+            btnConfirmar.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Procesando...';
+        }
+        
         const tipoCliente = document.getElementById(`tipo-venta-cliente${id}`);
         const tipoVenta = tipoCliente && tipoCliente.checked ? 'cliente' : 'patinado';
         
@@ -1457,6 +1476,12 @@
                 setTimeout(() => location.reload(), 500);
             })
             .catch(error => {
+                // Rehabilitar botón en caso de error
+                const btnConfirmar = document.querySelector(`#ventaModal${id} .btn-success`);
+                if (btnConfirmar) {
+                    btnConfirmar.disabled = false;
+                    btnConfirmar.innerHTML = '<i class="fas fa-check me-1"></i>Confirmar Venta';
+                }
                 alert('Error: ' + error.message);
             });
         } else {
@@ -1473,10 +1498,22 @@
                     if (modal) modal.hide();
                     location.reload();
                 } else {
+                    // Rehabilitar botón en caso de error
+                    const btnConfirmar = document.querySelector(`#ventaModal${id} .btn-success`);
+                    if (btnConfirmar) {
+                        btnConfirmar.disabled = false;
+                        btnConfirmar.innerHTML = '<i class="fas fa-check me-1"></i>Confirmar Venta';
+                    }
                     alert('Error: ' + data.error);
                 }
             })
             .catch(error => {
+                // Rehabilitar botón en caso de error
+                const btnConfirmar = document.querySelector(`#ventaModal${id} .btn-success`);
+                if (btnConfirmar) {
+                    btnConfirmar.disabled = false;
+                    btnConfirmar.innerHTML = '<i class="fas fa-check me-1"></i>Confirmar Venta';
+                }
                 alert('Error: ' + error.message);
             });
         }

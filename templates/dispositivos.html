@@ -368,6 +368,7 @@
                 <th>P. Cliente</th>
                 <th>P. Patinado</th>
                 <th>Estado</th>
+                <th>Ingreso</th>
                 <th>Acciones</th>
             </tr>
         </thead>
@@ -404,6 +405,15 @@
                                 {% endfor %}
                             </select>
                         </div>
+                    </td>
+                    <td>
+                        {% if d.fecha_entrada %}
+                        <span class="badge bg-light text-dark border" title="Fecha de ingreso">
+                            📅 {{ d.fecha_entrada.strftime('%d/%m/%Y') }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
                     </td>
                     <td>
                         <div class="btn-group btn-group-sm d-flex flex-wrap gap-2 acciones-container" role="group" data-id="{{ d.id }}">
@@ -930,6 +940,14 @@
     
     // Procesar venta (sin factura PDF)
     async function procesarVentaSinFactura() {
+        // Prevenir doble clic
+        const btnSoloVender = document.getElementById('btn-solo-vender');
+        if (btnSoloVender) {
+            if (btnSoloVender.disabled) return;
+            btnSoloVender.disabled = true;
+            btnSoloVender.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Procesando...';
+        }
+        
         const id = document.getElementById('factura-dispositivo-id').value;
         const tipoVenta = obtenerTipoVenta();
         
@@ -945,6 +963,10 @@
             
             if (response.redirected) {
                 showToast('Sesión expirada', 'error');
+                if (btnSoloVender) {
+                    btnSoloVender.disabled = false;
+                    btnSoloVender.innerHTML = 'Solo Vender';
+                }
                 return;
             }
             
@@ -955,9 +977,17 @@
                 facturaModal.hide();
                 actualizarUIVendido(id);
             } else {
+                if (btnSoloVender) {
+                    btnSoloVender.disabled = false;
+                    btnSoloVender.innerHTML = 'Solo Vender';
+                }
                 showToast(data.error || 'Error al vender', 'error');
             }
         } catch (error) {
+            if (btnSoloVender) {
+                btnSoloVender.disabled = false;
+                btnSoloVender.innerHTML = 'Solo Vender';
+            }
             showToast('Error de conexión', 'error');
             console.error(error);
         }
@@ -965,6 +995,14 @@
     
     // Procesar venta con factura PDF
     async function procesarVentaConFactura() {
+        // Prevenir doble clic
+        const btnVenderFactura = document.getElementById('btn-vender-factura');
+        if (btnVenderFactura) {
+            if (btnVenderFactura.disabled) return;
+            btnVenderFactura.disabled = true;
+            btnVenderFactura.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Procesando...';
+        }
+        
         const id = document.getElementById('factura-dispositivo-id').value;
         const tipoVenta = obtenerTipoVenta();
         
@@ -981,12 +1019,22 @@
             
             if (responseVenta.redirected) {
                 showToast('Sesión expirada', 'error');
+                const btnVenderFactura = document.getElementById('btn-vender-factura');
+                if (btnVenderFactura) {
+                    btnVenderFactura.disabled = false;
+                    btnVenderFactura.innerHTML = 'Vender y Facturar';
+                }
                 return;
             }
             
             const dataVenta = await responseVenta.json();
             
             if (!dataVenta.success) {
+                const btnVenderFactura = document.getElementById('btn-vender-factura');
+                if (btnVenderFactura) {
+                    btnVenderFactura.disabled = false;
+                    btnVenderFactura.innerHTML = 'Vender y Facturar';
+                }
                 showToast(dataVenta.error || 'Error al vender', 'error');
                 return;
             }
@@ -1031,6 +1079,11 @@
             actualizarUIVendido(id);
             
         } catch (error) {
+            const btnVenderFactura = document.getElementById('btn-vender-factura');
+            if (btnVenderFactura) {
+                btnVenderFactura.disabled = false;
+                btnVenderFactura.innerHTML = 'Vender y Facturar';
+            }
             showToast('Error de conexión', 'error');
             console.error(error);
         }
