@@ -20,11 +20,15 @@ from reportlab.platypus import Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
-app = Flask(__name__)
+# Configurar rutas para templates y static (estructura organizada)
+template_dir = os.path.join(os.path.dirname(__file__), 'app_new', 'templates')
+static_dir = os.path.join(os.path.dirname(__file__), 'app_new', 'static')
+
+app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = 'tu_clave_secreta_cambia_esto'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:root@localhost/inventario'  # ¡Cambiado a "inventario"! Cambia "tu_password"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
+app.config['UPLOAD_FOLDER'] = os.path.join(static_dir, 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -246,17 +250,20 @@ class Dispositivo(db.Model):
     tipo = db.Column(db.String(50), nullable=False)  # PC, Tablet, iPad, Cámara, etc.
     marca = db.Column(db.String(50), nullable=False)
     modelo = db.Column(db.String(100), nullable=False)
+    color = db.Column(db.String(30), nullable=True)  # Color del dispositivo
     especificaciones = db.Column(db.Text)  # RAM, Almacenamiento, Procesador, etc.
     serial = db.Column(db.String(100), nullable=True)
     precio_compra = db.Column(db.Float, default=0.0)
     precio_cliente = db.Column(db.Float, default=0.0)
     precio_patinado = db.Column(db.Float, default=0.0)
-    estado = db.Column(db.String(20), default='disponible')  # disponible, vendido, dañado, servicio
+    estado = db.Column(db.String(20), default='local')  # local, Patinado, Vendido, Servicio Técnico
     cantidad = db.Column(db.Integer, default=1)
     notas = db.Column(db.Text)
     en_stock = db.Column(db.Boolean, default=True)
     fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
     tercero_id = db.Column(db.Integer, db.ForeignKey('tercero.id'), nullable=True)
+    patinado_en = db.Column(db.DateTime, nullable=True)  # Fecha en que se patinó
+    veces_ingresado = db.Column(db.Integer, default=1)  # Cuántas veces ha entrado al inventario
     plan_retoma = db.Column(db.Boolean, default=True)
 
     tercero = db.relationship('Tercero', backref='dispositivos')
@@ -301,11 +308,13 @@ class DispositivoForm(FlaskForm):
         ('Smartwatch', 'Smartwatch'),
         ('Impresora', 'Impresora'),
         ('Router', 'Router'),
+        ('Consola', 'Consola'),
         ('Otro', 'Otro')
     ], validators=[DataRequired()])
     tipo_otro = StringField('Otro tipo (personalizado)')
     marca = StringField('Marca', validators=[DataRequired()])
     modelo = StringField('Modelo', validators=[DataRequired()])
+    color = StringField('Color')
     especificaciones = TextAreaField('Especificaciones (RAM, Almacenamiento, Procesador, etc.)')
     serial = StringField('Serial/Código')
     precio_compra = StringField('Precio Compra', validators=[DataRequired()])
@@ -313,7 +322,7 @@ class DispositivoForm(FlaskForm):
     precio_patinado = StringField('Precio Patinado', validators=[DataRequired()])
     cantidad = StringField('Cantidad', validators=[DataRequired()], default='1')
     estado = SelectField('Estado', choices=[
-        ('local', 'Local'),
+        ('local', 'local'),
         ('Patinado', 'Patinado'),
         ('Vendido', 'Vendido'),
         ('Servicio Técnico', 'Servicio Técnico')
@@ -429,7 +438,7 @@ def register():
         existing_user = User.query.filter_by(username=form.username.data).first()
         if existing_user:
             flash('¡Usuario ya existe! Inicia sesión.', 'error')
-            return render_template('register.html', form=form)
+            return render_template('auth/register.html', form=form)
         
         user = User(username=form.username.data, role=form.role.data)
         user.set_password(form.password.data)
@@ -437,7 +446,7 @@ def register():
         db.session.commit()
         flash('¡Usuario registrado! Inicia sesión.', 'success')
         return redirect(url_for('login'))
-    return render_template('register.html', form=form)
+    return render_template('auth/register.html', form=form)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -451,7 +460,8 @@ def login():
             flash('¡Bienvenido!', 'success')
             return redirect(url_for('index'))
         flash('Usuario o contraseña incorrecta.', 'error')
-    return render_template('login.html', form=form)
+    config = ConfiguracionEmpresa.query.first()
+    return render_template('auth/login.html', form=form, config=config)
 
 @app.route('/logout')
 @login_required
@@ -475,7 +485,7 @@ def caja():
     if tipo_filtro:
         query = query.filter_by(tipo=tipo_filtro)
     
-    # Búsqueda por IMEI en la descripción
+    # Búsqueda por IMEI o Serial en la descripción
     if buscar_imei:
         query = query.filter(Transaccion.descripcion.ilike(f'%{buscar_imei}%'))
     
@@ -517,7 +527,7 @@ def caja():
     ventas_todas = Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma', 'Venta Dispositivo'])).all()
     ganancia_neta_total_acumulada = sum((t.ganancia_neta or 0) for t in ventas_todas)
     
-    return render_template('caja.html', transacciones=transacciones, tipo_filtro=tipo_filtro, 
+    return render_template('caja/caja.html', transacciones=transacciones, tipo_filtro=tipo_filtro, 
                           fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, buscar_imei=buscar_imei,
                           total_monto=total_monto, total_ganancia_neta=total_ganancia_neta,
                           cantidad_transacciones=cantidad_transacciones, 
@@ -568,7 +578,7 @@ def stock():
     total_items = cantidad_celulares + cantidad_dispositivos
     inversion_total = inversion_celulares + inversion_dispositivos
     
-    return render_template('stock.html', 
+    return render_template('inventario/stock.html', 
                           celulares=celulares, dispositivos=dispositivos_list,
                           cantidad_celulares=cantidad_celulares, cantidad_dispositivos=cantidad_dispositivos,
                           total_items=total_items,
@@ -582,38 +592,23 @@ def stock():
 def dispositivos():
     form = DispositivoForm()
     
-    if request.method == 'POST':
-        print(f"POST recibido - Datos: {request.form}")
-        print(f"Form válido: {form.validate()}")
-        if form.errors:
-            print(f"Errores del formulario: {form.errors}")
-            for field, errors in form.errors.items():
-                for error in errors:
-                    flash(f'Error en {field}: {error}', 'error')
-    
     if form.validate_on_submit():
         if form.tipo.data == 'Otro' and not (form.tipo_otro.data and form.tipo_otro.data.strip()):
             flash('Especifica el tipo cuando seleccionas "Otro".', 'error')
             return redirect(url_for('dispositivos'))
         try:
             tipo_val = form.tipo_otro.data.strip() if form.tipo.data == 'Otro' and form.tipo_otro.data else form.tipo.data
-            print(f"=== GUARDANDO DISPOSITIVO ===")
-            print(f"Tipo: {tipo_val}")
-            print(f"Marca: {form.marca.data}")
-            print(f"Modelo: {form.modelo.data}")
-            print(f"Precio compra: {limpiar_pesos(form.precio_compra.data)}")
-            print(f"Precio venta: {limpiar_pesos(form.precio_venta.data)}")
-            print(f"Cantidad: {form.cantidad.data}")
-            print(f"Estado: {form.estado.data}")
             
             dispositivo = Dispositivo(
                 tipo=tipo_val,
                 marca=form.marca.data,
                 modelo=form.modelo.data,
+                color=form.color.data,
                 especificaciones=form.especificaciones.data,
                 serial=form.serial.data,
                 precio_compra=limpiar_pesos(form.precio_compra.data),
-                precio_venta=limpiar_pesos(form.precio_venta.data),
+                precio_cliente=limpiar_pesos(form.precio_cliente.data),
+                precio_patinado=limpiar_pesos(form.precio_patinado.data),
                 cantidad=int(form.cantidad.data),
                 estado=form.estado.data,
                 notas=form.notas.data,
@@ -622,12 +617,10 @@ def dispositivos():
             )
             db.session.add(dispositivo)
             db.session.commit()
-            print(f"=== DISPOSITIVO GUARDADO CON ID: {dispositivo.id} ===")
-            flash(f'¡Dispositivo {tipo_val} agregado con ID {dispositivo.id}!', 'success')
+            flash(f'¡Dispositivo {tipo_val} agregado exitosamente!', 'success')
             return redirect(url_for('dispositivos'))
         except Exception as e:
             db.session.rollback()
-            print(f"=== ERROR AL GUARDAR: {str(e)} ===")
             flash(f'Error al guardar: {str(e)}', 'error')
     
     # Búsqueda y filtrado
@@ -647,7 +640,10 @@ def dispositivos():
     if tipo_filtro:
         query = query.filter_by(tipo=tipo_filtro)
     if estado_filtro:
-        query = query.filter_by(estado=estado_filtro)
+        if estado_filtro == 'local':
+            query = query.filter(Dispositivo.estado.in_(['local', 'Cliente']))
+        else:
+            query = query.filter_by(estado=estado_filtro)
     
     # Ordenamiento
     if orden == 'ultimos':
@@ -668,7 +664,7 @@ def dispositivos():
     inversion_dispositivos = sum((d.precio_compra * d.cantidad or 0) for d in dispositivos_list)
     
     terceros = Tercero.query.filter_by(activo=True).all()
-    return render_template('dispositivos.html', form=form, dispositivos=dispositivos_list, 
+    return render_template('inventario/dispositivos.html', form=form, dispositivos=dispositivos_list, 
                           search=search, tipo_filtro=tipo_filtro, estado_filtro=estado_filtro, orden=orden,
                           cantidad_dispositivos=cantidad_dispositivos, 
                           inversion_dispositivos=inversion_dispositivos, terceros=terceros, user=current_user)
@@ -701,6 +697,7 @@ def editar_dispositivo(id):
             dispositivo.tipo = tipo_val
             dispositivo.marca = form.marca.data
             dispositivo.modelo = form.modelo.data
+            dispositivo.color = form.color.data
             dispositivo.especificaciones = form.especificaciones.data
             dispositivo.serial = form.serial.data
             dispositivo.precio_compra = limpiar_pesos(form.precio_compra.data)
@@ -726,17 +723,18 @@ def editar_dispositivo(id):
             form.tipo_otro.data = dispositivo.tipo
         form.marca.data = dispositivo.marca
         form.modelo.data = dispositivo.modelo
+        form.color.data = dispositivo.color
         form.especificaciones.data = dispositivo.especificaciones
         form.serial.data = dispositivo.serial
         form.precio_compra.data = dispositivo.precio_compra
         form.precio_cliente.data = dispositivo.precio_cliente
         form.precio_patinado.data = dispositivo.precio_patinado
         form.cantidad.data = dispositivo.cantidad
-        form.estado.data = dispositivo.estado
+        form.estado.data = 'local' if dispositivo.estado == 'Cliente' else dispositivo.estado
         form.notas.data = dispositivo.notas
         form.plan_retoma.data = dispositivo.plan_retoma
     
-    return render_template('editar_dispositivo.html', form=form, dispositivo=dispositivo, user=current_user,
+    return render_template('inventario/editar_dispositivo.html', form=form, dispositivo=dispositivo, user=current_user,
                           search=search, tipo_filtro=tipo_filtro, estado_filtro=estado_filtro, orden=orden)
 
 # Cambiar estado de dispositivo (similar a celulares)
@@ -749,6 +747,8 @@ def cambiar_estado_dispositivo(id):
 
     dispositivo = Dispositivo.query.get_or_404(id)
     nuevo_estado = request.form.get('nuevo_estado')
+    if nuevo_estado == 'Cliente':
+        nuevo_estado = 'local'
     tercero_id = request.form.get('tercero_id')
     
     # Preservar parámetros de filtro
@@ -777,8 +777,11 @@ def cambiar_estado_dispositivo(id):
             return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
 
         dispositivo.tercero_id = tercero.id
+        dispositivo.patinado_en = obtener_fecha_bogota()  # Registrar fecha de patinado
     else:
         dispositivo.tercero_id = None
+        if dispositivo.estado == 'Patinado' and nuevo_estado != 'Patinado':
+            dispositivo.patinado_en = None  # Limpiar fecha si deja de estar patinado
 
     dispositivo.estado = nuevo_estado
     # Gestionar en_stock: Vendido -> False; otros -> True
@@ -797,6 +800,8 @@ def api_cambiar_estado_dispositivo(id):
     dispositivo = Dispositivo.query.get_or_404(id)
     data = request.get_json() or {}
     nuevo_estado = data.get('nuevo_estado')
+    if nuevo_estado == 'Cliente':
+        nuevo_estado = 'local'
     tercero_id = data.get('tercero_id')
     
     if nuevo_estado not in ['local', 'Patinado', 'Vendido', 'Servicio Técnico']:
@@ -809,8 +814,11 @@ def api_cambiar_estado_dispositivo(id):
         if not tercero:
             return jsonify({'success': False, 'error': 'Tercero no encontrado o inactivo'}), 400
         dispositivo.tercero_id = tercero.id
+        dispositivo.patinado_en = obtener_fecha_bogota()  # Registrar fecha de patinado
     else:
         dispositivo.tercero_id = None
+        if dispositivo.estado == 'Patinado' and nuevo_estado != 'Patinado':
+            dispositivo.patinado_en = None  # Limpiar fecha si deja de estar patinado
     
     dispositivo.estado = nuevo_estado
     dispositivo.en_stock = (nuevo_estado != 'Vendido')
@@ -831,27 +839,264 @@ def api_vender_dispositivo(id):
     if not dispositivo.en_stock:
         return jsonify({'success': False, 'error': 'Este dispositivo ya fue vendido'}), 400
     
+    data = request.get_json() or {}
+    tipo_venta = data.get('tipo_venta', 'cliente')
+
     try:
-        precio_venta = dispositivo.precio_cliente * dispositivo.cantidad
+        if tipo_venta == 'patinado':
+            precio_venta_unitario = dispositivo.precio_patinado
+            tipo_transaccion = 'Venta Dispositivo (Patinado)'
+            nuevo_estado = 'Patinado'
+            sub_tipo = 'Patinado'
+        else:
+            precio_venta_unitario = dispositivo.precio_cliente
+            tipo_transaccion = 'Venta Dispositivo'
+            nuevo_estado = 'Vendido'
+            sub_tipo = 'Cliente'
+        
+        precio_venta = precio_venta_unitario * dispositivo.cantidad
         precio_compra = dispositivo.precio_compra * dispositivo.cantidad
         ganancia_neta = precio_venta - precio_compra
         
+        # Crear descripción detallada
+        descripcion = f"Venta {sub_tipo} {dispositivo.tipo} {dispositivo.marca} {dispositivo.modelo}"
+        if dispositivo.color:
+            descripcion += f" {dispositivo.color}"
+        if dispositivo.serial:
+            descripcion += f" - Serial: {dispositivo.serial}"
+        descripcion += f" (x{dispositivo.cantidad})"
+        
         transaccion = Transaccion(
-            tipo='Venta Dispositivo',
+            tipo=tipo_transaccion,
             monto=precio_venta,
             ganancia_neta=ganancia_neta,
-            descripcion=f"{dispositivo.tipo} {dispositivo.marca} {dispositivo.modelo} (x{dispositivo.cantidad})"
+            descripcion=descripcion
         )
         
-        dispositivo.estado = 'Vendido'
+        dispositivo.estado = nuevo_estado
         dispositivo.en_stock = False
         db.session.add(transaccion)
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': f'¡{dispositivo.tipo} {dispositivo.modelo} vendido! Ganancia: ${ganancia_neta:,.0f}'.replace(',', '.')
+            'estado': nuevo_estado,
+            'message': f'¡{dispositivo.tipo} {dispositivo.modelo} vendido como {sub_tipo}! Ganancia: ${ganancia_neta:,.0f}'.replace(',', '.')
         })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/dispositivo/factura/<int:id>', methods=['POST'])
+@login_required
+def api_generar_factura_dispositivo(id):
+    """API para vender dispositivo con factura PDF"""
+    dispositivo = Dispositivo.query.get_or_404(id)
+
+    # Verificar que el dispositivo aún esté en stock para evitar doble venta
+    if not dispositivo.en_stock:
+        return jsonify({'success': False, 'error': 'Este dispositivo ya fue vendido'}), 400
+
+    data = request.get_json() or {}
+
+    tipo_venta = data.get('tipo_venta', 'cliente')
+    cliente_nombre = data.get('cliente_nombre', 'Consumidor Final')
+    cliente_cedula = data.get('cliente_cedula', '')
+    cliente_telefono = data.get('cliente_telefono', '')
+    cliente_direccion = data.get('cliente_direccion', '')
+    metodo_pago = data.get('metodo_pago', 'Efectivo')
+
+    try:
+        if tipo_venta == 'patinado':
+            precio_venta_unitario = dispositivo.precio_patinado
+            sub_tipo = 'Patinado'
+            tipo_transaccion = 'Venta Dispositivo (Patinado)'
+            dispositivo.estado = 'Patinado'
+        else:
+            precio_venta_unitario = dispositivo.precio_cliente
+            sub_tipo = 'Cliente'
+            tipo_transaccion = 'Venta Dispositivo'
+            dispositivo.estado = 'Vendido'
+
+        monto = precio_venta_unitario * dispositivo.cantidad
+        ganancia_neta = monto - (dispositivo.precio_compra * dispositivo.cantidad)
+        dispositivo.en_stock = False
+
+        descripcion = f"Venta {sub_tipo} {dispositivo.tipo} {dispositivo.marca} {dispositivo.modelo}"
+        if dispositivo.color:
+            descripcion += f" {dispositivo.color}"
+        if dispositivo.serial:
+            descripcion += f" - Serial: {dispositivo.serial}"
+        descripcion += f" (x{dispositivo.cantidad}) - Cliente: {cliente_nombre}"
+
+        trans = Transaccion(
+            tipo=tipo_transaccion,
+            monto=monto,
+            ganancia_neta=ganancia_neta,
+            descripcion=descripcion
+        )
+        db.session.add(trans)
+        db.session.commit()
+
+        # Generar PDF formato ticket térmico 80mm
+        buffer = BytesIO()
+        ticket_width = 76 * 2.83465
+        ticket_height = 14 * inch
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=(ticket_width, ticket_height),
+            rightMargin=5,
+            leftMargin=5,
+            topMargin=5,
+            bottomMargin=5
+        )
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            'TicketTitle',
+            parent=styles['Heading1'],
+            fontSize=12,
+            textColor=colors.black,
+            spaceAfter=6,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+
+        subtitle_style = ParagraphStyle(
+            'TicketSubtitle',
+            parent=styles['Normal'],
+            fontSize=8,
+            alignment=TA_CENTER,
+            spaceAfter=3
+        )
+
+        normal_style = ParagraphStyle(
+            'TicketNormal',
+            parent=styles['Normal'],
+            fontSize=8,
+            spaceAfter=2
+        )
+
+        config = ConfiguracionEmpresa.query.first()
+
+        agregar_logo_pdf(elements, config, ticket_width)
+        elements.append(Paragraph(f"<b>{config.nombre if config else 'CELLSTORE'}</b>", title_style))
+        elements.append(Paragraph(f"NIT: {config.nit if config else '900.123.456-7'}", subtitle_style))
+        elements.append(Paragraph(f"Tel: {config.telefono if config else '(601) 234-5678'}", subtitle_style))
+        elements.append(Spacer(1, 0.1 * inch))
+        elements.append(Paragraph("<b>FACTURA DE VENTA</b>", title_style))
+        elements.append(Paragraph(f"No: {trans.id:06d}", subtitle_style))
+        elements.append(Paragraph(f"Fecha: {trans.fecha.strftime('%d/%m/%Y %H:%M')}", subtitle_style))
+        elements.append(Spacer(1, 0.1 * inch))
+
+        elements.append(Paragraph("=" * 40, subtitle_style))
+
+        if cliente_nombre and cliente_nombre != 'Consumidor Final':
+            elements.append(Paragraph(f"<b>Cliente:</b> {cliente_nombre}", normal_style))
+            if cliente_cedula:
+                elements.append(Paragraph(f"<b>CC/NIT:</b> {cliente_cedula}", normal_style))
+            if cliente_telefono:
+                elements.append(Paragraph(f"<b>Tel:</b> {cliente_telefono}", normal_style))
+            if cliente_direccion:
+                elements.append(Paragraph(f"<b>Dir:</b> {cliente_direccion}", normal_style))
+            elements.append(Spacer(1, 0.05 * inch))
+
+        elements.append(Paragraph("=" * 40, subtitle_style))
+        elements.append(Spacer(1, 0.05 * inch))
+
+        elements.append(Paragraph("<b>PRODUCTO</b>", normal_style))
+        elements.append(Paragraph(f"{dispositivo.tipo} {dispositivo.marca} {dispositivo.modelo}", normal_style))
+        if dispositivo.color:
+            elements.append(Paragraph(f"Color: {dispositivo.color}", normal_style))
+        if dispositivo.serial:
+            elements.append(Paragraph(f"Serial: {dispositivo.serial}", normal_style))
+        elements.append(Spacer(1, 0.05 * inch))
+
+        datos_precio = [
+            ['Cantidad', 'P. Unit', 'Total'],
+            [str(dispositivo.cantidad), formato_pesos(precio_venta_unitario), formato_pesos(monto)]
+        ]
+
+        col_width = (ticket_width - 10) / 3
+        table_precio = Table(datos_precio, colWidths=[col_width, col_width, col_width])
+        table_precio.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('LINEBELOW', (0, 0), (-1, 0), 1, colors.black),
+            ('LINEABOVE', (0, 1), (-1, 1), 0.5, colors.grey),
+        ]))
+        elements.append(table_precio)
+        elements.append(Spacer(1, 0.1 * inch))
+
+        elements.append(Paragraph("=" * 40, subtitle_style))
+        total_data = [
+            ['Subtotal:', formato_pesos(monto)],
+            ['IVA (0%):', '$0'],
+            ['TOTAL:', formato_pesos(monto)]
+        ]
+
+        table_total = Table(total_data, colWidths=[(ticket_width - 10) * 0.5, (ticket_width - 10) * 0.5])
+        table_total.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, 1), 9),
+            ('FONTSIZE', (0, 2), (-1, 2), 10),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+            ('LINEABOVE', (0, 2), (-1, 2), 1, colors.black),
+        ]))
+        elements.append(table_total)
+        elements.append(Spacer(1, 0.1 * inch))
+
+        bold_style = ParagraphStyle('Bold', parent=normal_style, fontName='Helvetica-Bold')
+        elements.append(Paragraph(f"Pago: {metodo_pago}", bold_style))
+        elements.append(Paragraph(f"Tipo: {sub_tipo}", bold_style))
+        elements.append(Spacer(1, 0.15 * inch))
+
+        elements.append(Paragraph("=" * 40, subtitle_style))
+        if config and config.instagram_url:
+            elements.append(Paragraph("Síguenos en Instagram", subtitle_style))
+            agregar_qr_pdf(elements, config, size=70)
+        elements.append(Paragraph("<i>Gracias por su compra</i>", subtitle_style))
+        elements.append(Spacer(1, 0.1 * inch))
+
+        garantia_style = ParagraphStyle(
+            'GarantiaStyle',
+            parent=styles['Normal'],
+            fontSize=6,
+            leading=7,
+            spaceAfter=2,
+            alignment=TA_CENTER
+        )
+        elements.append(Paragraph("-" * 40, subtitle_style))
+        elements.append(Paragraph("<b>TÉRMINOS DE GARANTÍA</b>", garantia_style))
+        elements.append(Paragraph("Garantía de IMEI de por vida.", garantia_style))
+        elements.append(Paragraph("Garantía por funcionamiento: 2 meses.", garantia_style))
+        elements.append(Paragraph("La garantía NO cubre: daños por maltrato, golpes, humedad, display, táctil, sobrecarga o equipos apagados.", garantia_style))
+        elements.append(Paragraph("La garantía NO cubre modificación de software mal instalado por cliente, ni daños al software original.", garantia_style))
+        elements.append(Paragraph("<b>SIN FACTURA NO HAY GARANTÍA.</b>", garantia_style))
+        elements.append(Paragraph("Si el daño no está cubierto por garantía, debe cancelarse el costo de revisión y/o arreglo.", garantia_style))
+        elements.append(Paragraph("Equipos con bloqueo de registro no tienen garantía.", garantia_style))
+        elements.append(Paragraph("-" * 40, subtitle_style))
+        elements.append(Spacer(1, 0.05 * inch))
+        elements.append(Paragraph("<i>Sin validez fiscal</i>", subtitle_style))
+
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph("_" * 30, subtitle_style))
+        elements.append(Paragraph("<b>Firma del Cliente</b>", subtitle_style))
+        elements.append(Spacer(1, 0.1 * inch))
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"Factura_{trans.id:06d}_{dispositivo.tipo}_{dispositivo.modelo.replace(' ', '_')}.pdf",
+            mimetype='application/pdf'
+        )
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -877,6 +1122,7 @@ def api_eliminar_dispositivo(id):
 @login_required
 def api_obtener_dispositivo(id):
     dispositivo = Dispositivo.query.get_or_404(id)
+    estado_normalizado = 'local' if dispositivo.estado == 'Cliente' else dispositivo.estado
     return jsonify({
         'success': True,
         'dispositivo': {
@@ -884,14 +1130,19 @@ def api_obtener_dispositivo(id):
             'tipo': dispositivo.tipo,
             'marca': dispositivo.marca,
             'modelo': dispositivo.modelo,
+            'color': dispositivo.color,
             'serial': dispositivo.serial,
             'precio_compra': dispositivo.precio_compra,
-            'precio_venta': dispositivo.precio_cliente,
+            'precio_cliente': dispositivo.precio_cliente,
+            'precio_patinado': dispositivo.precio_patinado,
             'cantidad': dispositivo.cantidad,
-            'estado': dispositivo.estado,
+            'estado': estado_normalizado,
             'especificaciones': dispositivo.especificaciones,
             'notas': dispositivo.notas,
-            'plan_retoma': dispositivo.plan_retoma
+            'plan_retoma': dispositivo.plan_retoma,
+            'tercero_id': dispositivo.tercero_id,
+            'patinado_en': dispositivo.patinado_en.isoformat() if dispositivo.patinado_en else None,
+            'veces_ingresado': dispositivo.veces_ingresado
         }
     })
 
@@ -908,12 +1159,16 @@ def api_editar_dispositivo(id):
             dispositivo.marca = data['marca']
         if 'modelo' in data:
             dispositivo.modelo = data['modelo']
+        if 'color' in data:
+            dispositivo.color = data['color']
         if 'serial' in data:
             dispositivo.serial = data['serial']
         if 'precio_compra' in data:
             dispositivo.precio_compra = limpiar_pesos(data['precio_compra'])
-        if 'precio_venta' in data:
-            dispositivo.precio_cliente = limpiar_pesos(data['precio_venta'])
+        if 'precio_cliente' in data:
+            dispositivo.precio_cliente = limpiar_pesos(data['precio_cliente'])
+        if 'precio_patinado' in data:
+            dispositivo.precio_patinado = limpiar_pesos(data['precio_patinado'])
         if 'cantidad' in data:
             dispositivo.cantidad = int(data['cantidad'])
         if 'estado' in data:
@@ -934,9 +1189,11 @@ def api_editar_dispositivo(id):
                 'tipo': dispositivo.tipo,
                 'marca': dispositivo.marca,
                 'modelo': dispositivo.modelo,
+                'color': dispositivo.color,
                 'serial': dispositivo.serial,
                 'precio_compra': dispositivo.precio_compra,
-                'precio_venta': dispositivo.precio_cliente,
+                'precio_cliente': dispositivo.precio_cliente,
+                'precio_patinado': dispositivo.precio_patinado,
                 'cantidad': dispositivo.cantidad,
                 'estado': dispositivo.estado
             }
@@ -984,17 +1241,32 @@ def vender_dispositivo(id):
         return redirect(url_for('dispositivos', search=search, tipo=tipo_filtro, estado=estado_filtro, orden=orden))
     
     try:
+        # Determinar precio de venta según el estado
+        if dispositivo.estado == 'Patinado':
+            precio_venta_unitario = dispositivo.precio_patinado
+            tipo_venta = 'Venta Dispositivo (Patinado)'
+        else:
+            precio_venta_unitario = dispositivo.precio_cliente
+            tipo_venta = 'Venta Dispositivo'
+        
         # Calcular ganancia neta
-        precio_venta = dispositivo.precio_cliente * dispositivo.cantidad
+        precio_venta = precio_venta_unitario * dispositivo.cantidad
         precio_compra = dispositivo.precio_compra * dispositivo.cantidad
         ganancia_neta = precio_venta - precio_compra
         
         # Crear transacción en caja
+        descripcion = f"{dispositivo.tipo} {dispositivo.marca} {dispositivo.modelo}"
+        if dispositivo.color:
+            descripcion += f" {dispositivo.color}"
+        if dispositivo.serial:
+            descripcion += f" - Serial: {dispositivo.serial}"
+        descripcion += f" (x{dispositivo.cantidad})"
+        
         transaccion = Transaccion(
-            tipo='Venta Dispositivo',
+            tipo=tipo_venta,
             monto=precio_venta,
             ganancia_neta=ganancia_neta,
-            descripcion=f"{dispositivo.tipo} {dispositivo.marca} {dispositivo.modelo} (x{dispositivo.cantidad})"
+            descripcion=descripcion
         )
         
         # Marcar dispositivo como vendido
@@ -1004,7 +1276,7 @@ def vender_dispositivo(id):
         db.session.add(transaccion)
         db.session.commit()
         
-        flash(f'¡{dispositivo.tipo} vendido! Transacción registrada en caja.', 'success')
+        flash(f'¡{dispositivo.tipo} vendido por ${precio_venta:,.0f}! Ganancia neta: ${ganancia_neta:,.0f}', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Error al registrar venta: {str(e)}', 'error')
@@ -1122,7 +1394,8 @@ def retoma_dispositivo(id):
                 especificaciones=None,
                 serial=serial_val,
                 precio_compra=valor_item,
-                precio_venta=valor_item * 1.2,
+                precio_cliente=valor_item * 1.2,
+                precio_patinado=valor_item * 1.1,
                 estado='local',
                 cantidad=cantidad_val,
                 notas=notas_val,
@@ -1447,6 +1720,38 @@ def verificar_imei(imei):
     return jsonify({'existe': False})
 
 
+@app.route('/verificar_serial/<serial>')
+@login_required
+def verificar_serial(serial):
+    """Verifica si un serial de dispositivo ya existe en la base de datos"""
+    from flask import jsonify
+    serial = (serial or '').strip()
+    if not serial:
+        return jsonify({'existe': False})
+
+    dispositivo = Dispositivo.query.filter_by(serial=serial).first()
+    if dispositivo:
+        return jsonify({
+            'existe': True,
+            'en_stock': dispositivo.en_stock,
+            'id': dispositivo.id,
+            'tipo': dispositivo.tipo,
+            'marca': dispositivo.marca,
+            'modelo': dispositivo.modelo,
+            'color': dispositivo.color,
+            'serial': dispositivo.serial,
+            'precio_compra': dispositivo.precio_compra,
+            'precio_cliente': dispositivo.precio_cliente,
+            'precio_patinado': dispositivo.precio_patinado,
+            'cantidad': dispositivo.cantidad,
+            'estado': dispositivo.estado,
+            'notas': dispositivo.notas,
+            'veces_ingresado': dispositivo.veces_ingresado or 1,
+            'fecha_entrada': dispositivo.fecha_entrada.strftime('%d/%m/%Y') if dispositivo.fecha_entrada else None
+        })
+    return jsonify({'existe': False})
+
+
 @app.route('/reactivar_celular/<int:id>', methods=['POST'])
 @login_required
 def reactivar_celular(id):
@@ -1574,7 +1879,7 @@ def index():
     ganancia_neta_total = sum((t.ganancia_neta or 0) for t in ventas_todas)
     # Inversión total: suma de precio_compra de todos los celulares en stock
     inversion_total = sum((c.precio_compra or 0) for c in celulares)
-    return render_template('index.html', form=form, celulares=celulares, terceros=terceros, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, estado_filtro=estado_filtro, orden=orden, servicio_tecnico_count=servicio_tecnico_count, user=current_user)
+    return render_template('caja/index.html', form=form, celulares=celulares, terceros=terceros, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, estado_filtro=estado_filtro, orden=orden, servicio_tecnico_count=servicio_tecnico_count, user=current_user)
 
 # CRUD: Editar, Eliminar (igual, con check rol)
 @app.route('/editar/<int:id>', methods=['GET', 'POST'])
@@ -1630,6 +1935,52 @@ def editar(id):
         flash(f'Error al actualizar celular: {str(e)}', 'error')
 
     return redirect(url_for('index'))
+
+
+@app.route('/reactivar_dispositivo/<int:id>', methods=['POST'])
+@login_required
+def reactivar_dispositivo(id):
+    """Reactiva un dispositivo que ya estuvo en inventario (vendido anteriormente)"""
+    if current_user.role != 'Admin':
+        flash('Solo administradores pueden reactivar dispositivos.', 'error')
+        return redirect(url_for('dispositivos'))
+
+    dispositivo = Dispositivo.query.get_or_404(id)
+
+    if dispositivo.en_stock:
+        flash('Este dispositivo ya esta en stock.', 'warning')
+        return redirect(url_for('dispositivos'))
+
+    try:
+        tipo_form = (request.form.get('tipo') or '').strip()
+        tipo_otro = (request.form.get('tipo_otro') or '').strip()
+        if tipo_form == 'Otro' and tipo_otro:
+            dispositivo.tipo = tipo_otro
+        elif tipo_form:
+            dispositivo.tipo = tipo_form
+
+        dispositivo.marca = (request.form.get('marca') or dispositivo.marca).strip()
+        dispositivo.modelo = (request.form.get('modelo') or dispositivo.modelo).strip()
+        dispositivo.color = (request.form.get('color') or '').strip() or dispositivo.color
+        dispositivo.serial = (request.form.get('serial') or dispositivo.serial).strip()
+        dispositivo.precio_compra = limpiar_pesos(request.form.get('precio_compra', '0'))
+        dispositivo.precio_cliente = limpiar_pesos(request.form.get('precio_cliente', '0'))
+        dispositivo.precio_patinado = limpiar_pesos(request.form.get('precio_patinado', '0'))
+        dispositivo.cantidad = int(request.form.get('cantidad') or dispositivo.cantidad or 1)
+        dispositivo.estado = request.form.get('estado', 'Patinado')
+        dispositivo.notas = request.form.get('notas', '')
+        dispositivo.en_stock = True
+        dispositivo.fecha_entrada = obtener_fecha_bogota()
+        dispositivo.veces_ingresado = (dispositivo.veces_ingresado or 1) + 1
+
+        db.session.commit()
+
+        flash(f'¡Dispositivo {dispositivo.tipo} {dispositivo.modelo} reactivado! (Ingreso #{dispositivo.veces_ingresado})', 'success')
+        return redirect(url_for('dispositivos'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al reactivar: {str(e)}', 'error')
+        return redirect(url_for('dispositivos'))
 
 @app.route('/eliminar/<int:id>', methods=['POST'])
 @login_required
@@ -2345,7 +2696,7 @@ def configuracion_empresa():
         flash('Acceso denegado.', 'error')
         return redirect(url_for('index'))
     config = ConfiguracionEmpresa.query.first()
-    return render_template('configuracion.html', user=current_user, config=config)
+    return render_template('configuracion/configuracion.html', user=current_user, config=config)
 
 @app.route('/guardar_configuracion', methods=['POST'])
 @login_required

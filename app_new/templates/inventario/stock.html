@@ -212,7 +212,7 @@
                             <td>{{ d.precio_cliente|pesos }}</td>
                             <td><strong>{{ (d.precio_compra * d.cantidad)|pesos }}</strong></td>
                             <td>
-                                <span class="badge bg-{% if d.estado == 'disponible' %}success{% elif d.estado == 'vendido' %}danger{% elif d.estado == 'dañado' %}warning{% else %}secondary{% endif %}">
+                                <span class="badge bg-{% if d.estado == 'local' %}info{% elif d.estado == 'Patinado' %}warning{% elif d.estado == 'Vendido' %}danger{% elif d.estado == 'Servicio Técnico' %}secondary{% else %}secondary{% endif %}">
                                     {{ d.estado }}
                                 </span>
                             </td>

@@ -402,6 +402,7 @@
                 <th>Precio Patinado</th>
                 <th>Estado</th>
                 <th>Patinado a</th>
+                <th>Ingreso</th>
                 <th>Acciones</th>
             </tr>
         </thead>
@@ -451,6 +452,15 @@
                         {% endif %}
                     </td>
                     <td>{{ cel.tercero.local ~ ' - ' ~ cel.tercero.nombre if cel.tercero else 'N/A' }}</td>
+                    <td>
+                        {% if cel.fecha_entrada %}
+                        <span class="badge bg-light text-dark border" title="Fecha de ingreso">
+                            📅 {{ cel.fecha_entrada.strftime('%d/%m/%Y') }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if cel.en_stock %}
                         <div class="btn-group btn-group-sm d-flex flex-wrap gap-2" role="group">

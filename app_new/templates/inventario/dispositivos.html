@@ -224,11 +224,15 @@
                     </div>
                 </div>
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">Modelo <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="edit-modelo">
                     </div>
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Color</label>
+                        <input type="text" class="form-control" id="edit-color" placeholder="Ej: Negro, Plata">
+                    </div>
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">Serial/Código</label>
                         <input type="text" class="form-control" id="edit-serial">
                     </div>
@@ -303,13 +307,17 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label class="form-label">Modelo <span class="text-danger">*</span></label>
                             {{ form.modelo(class="form-control", placeholder="Ej: Inspiron 15") }}
                         </div>
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Color</label>
+                            {{ form.color(class="form-control", placeholder="Ej: Negro, Plata") }}
+                        </div>
+                        <div class="col-md-4 mb-3">
                             <label class="form-label">Serial/Código</label>
-                            {{ form.serial(class="form-control", placeholder="Opcional") }}
+                            {{ form.serial(class="form-control", placeholder="Opcional", id="serial") }}
                         </div>
                     </div>
                     <div class="row">
@@ -354,6 +362,107 @@
     </div>
 </div>
 
+<!-- Modal para Reactivar Dispositivo (cuando el serial ya existe pero esta vendido) -->
+<div class="modal fade" id="reactivarDispositivoModal" tabindex="-1" aria-labelledby="reactivarDispositivoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="reactivarDispositivoLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>¡Dispositivo encontrado en historial!
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" id="reactivarDispositivoForm" action="">
+                {{ form.csrf_token }}
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong>Este dispositivo ya estuvo en el inventario anteriormente.</strong><br>
+                        <span id="reactivarDispositivoInfo"></span>
+                    </div>
+
+                    <h6>Actualizar datos para reingreso:</h6>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-select" id="reactivar_tipo" name="tipo">
+                                <option value="PC">PC</option>
+                                <option value="Laptop">Laptop</option>
+                                <option value="Tablet">Tablet</option>
+                                <option value="iPad">iPad</option>
+                                <option value="Cámara">Cámara</option>
+                                <option value="Monitor">Monitor</option>
+                                <option value="Teclado">Teclado</option>
+                                <option value="Mouse">Mouse</option>
+                                <option value="Auriculares">Auriculares</option>
+                                <option value="Smartwatch">Smartwatch</option>
+                                <option value="Impresora">Impresora</option>
+                                <option value="Router">Router</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                            <input type="text" class="form-control mt-2" id="reactivar_tipo_otro" name="tipo_otro" placeholder="Describe el tipo" style="display:none;">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Marca</label>
+                            <input type="text" class="form-control" id="reactivar_marca" name="marca" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Modelo</label>
+                            <input type="text" class="form-control" id="reactivar_modelo" name="modelo" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Color</label>
+                            <input type="text" class="form-control" id="reactivar_color" name="color">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Serial/Codigo</label>
+                            <input type="text" class="form-control" id="reactivar_serial" name="serial">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Cantidad</label>
+                            <input type="number" class="form-control" id="reactivar_cantidad" name="cantidad" min="1" value="1">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Nuevo Precio Compra <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control precio-input" id="reactivar_precio_compra" name="precio_compra" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Precio Cliente</label>
+                            <input type="text" class="form-control precio-input" id="reactivar_precio_cliente" name="precio_cliente">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Precio Patinado</label>
+                            <input type="text" class="form-control precio-input" id="reactivar_precio_patinado" name="precio_patinado">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Estado</label>
+                            <select class="form-select" id="reactivar_estado" name="estado">
+                                <option value="Patinado">Patinado</option>
+                                <option value="Servicio Técnico">Servicio Técnico</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Notas</label>
+                            <textarea class="form-control" id="reactivar_notas" name="notas" rows="2" placeholder="Ej: Reingreso por retoma"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-redo me-1"></i>Reactivar Dispositivo
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Tabla de Dispositivos -->
 <div class="table-responsive">
     <table class="table table-striped table-hover">
@@ -368,6 +477,7 @@
                 <th>P. Cliente</th>
                 <th>P. Patinado</th>
                 <th>Estado</th>
+                <th>Tercero/Patinador</th>
                 <th>Ingreso</th>
                 <th>Acciones</th>
             </tr>
@@ -376,6 +486,7 @@
             {% if dispositivos %}
                 {% for d in dispositivos %}
                 <tr>
+                    {% set estado_actual = 'local' if d.estado == 'Cliente' else d.estado %}
                     <td><span class="badge bg-info">{{ d.tipo }}</span></td>
                     <td>{{ d.marca }}</td>
                     <td>{{ d.modelo }}</td>
@@ -387,16 +498,16 @@
                     <td>
                         <div class="estado-container" data-id="{{ d.id }}">
                             <select class="form-select form-select-sm estado-select-ajax
-                                {% if d.estado == 'Patinado' %}bg-danger text-white
-                                {% elif d.estado == 'local' %}bg-secondary text-white
-                                {% elif d.estado == 'Vendido' %}bg-success text-white
-                                {% elif d.estado == 'Servicio Técnico' %}bg-warning text-dark
+                                {% if estado_actual == 'Patinado' %}bg-danger text-white
+                                {% elif estado_actual == 'local' %}bg-secondary text-white
+                                {% elif estado_actual == 'Vendido' %}bg-success text-white
+                                {% elif estado_actual == 'Servicio Técnico' %}bg-warning text-dark
                                 {% endif %}" 
-                                data-id="{{ d.id }}" data-estado-original="{{ d.estado }}">
-                                <option value="local" {% if d.estado == 'local' %}selected{% endif %}>Local</option>
-                                <option value="Patinado" {% if d.estado == 'Patinado' %}selected{% endif %}>Patinado</option>
-                                <option value="Vendido" {% if d.estado == 'Vendido' %}selected{% endif %}>Vendido</option>
-                                <option value="Servicio Técnico" {% if d.estado == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
+                                data-id="{{ d.id }}" data-estado-original="{{ estado_actual }}">
+                                <option value="local" {% if estado_actual == 'local' %}selected{% endif %}>Local</option>
+                                <option value="Patinado" {% if estado_actual == 'Patinado' %}selected{% endif %}>Patinado</option>
+                                <option value="Vendido" {% if estado_actual == 'Vendido' %}selected{% endif %}>Vendido</option>
+                                <option value="Servicio Técnico" {% if estado_actual == 'Servicio Técnico' %}selected{% endif %}>Servicio Técnico</option>
                             </select>
                             <select class="form-select form-select-sm mt-1 tercero-selector-ajax" data-id="{{ d.id }}" {% if d.estado != 'Patinado' %}style="display:none"{% endif %}>
                                 <option value="">Selecciona tercero</option>
@@ -406,6 +517,7 @@
                             </select>
                         </div>
                     </td>
+                    <td>{{ d.tercero.local ~ ' - ' ~ d.tercero.nombre if d.tercero else 'N/A' }}</td>
                     <td>
                         {% if d.fecha_entrada %}
                         <span class="badge bg-light text-dark border" title="Fecha de ingreso">
@@ -727,6 +839,100 @@
         });
     });
 
+    document.querySelectorAll('.precio-input').forEach(input => {
+        input.addEventListener('input', function() {
+            if (this.value) {
+                this.value = formatearPesos(this.value);
+            }
+        });
+    });
+
+    // === VERIFICAR SERIAL EXISTENTE ===
+    let verificandoSerial = false;
+    const serialInput = document.getElementById('serial');
+
+    if (serialInput) {
+        serialInput.addEventListener('blur', function() {
+            const serial = this.value.trim();
+            if (serial.length >= 3 && !verificandoSerial) {
+                verificandoSerial = true;
+                verificarSerialExistente(serial);
+            }
+        });
+    }
+
+    function verificarSerialExistente(serial) {
+        fetch(`/verificar_serial/${encodeURIComponent(serial)}`)
+            .then(response => response.json())
+            .then(data => {
+                verificandoSerial = false;
+                if (data.existe) {
+                    if (data.en_stock) {
+                        alert('⚠️ Este serial ya esta registrado y esta actualmente en stock. No se puede agregar duplicado.');
+                        serialInput.value = '';
+                        serialInput.focus();
+                    } else {
+                        mostrarModalReactivarDispositivo(data);
+                    }
+                }
+            })
+            .catch(err => {
+                verificandoSerial = false;
+                console.error('Error verificando serial:', err);
+            });
+    }
+
+    function toggleReactivarTipoOtro() {
+        const tipoSelect = document.getElementById('reactivar_tipo');
+        const tipoOtroInput = document.getElementById('reactivar_tipo_otro');
+        if (!tipoSelect || !tipoOtroInput) return;
+        if (tipoSelect.value === 'Otro') {
+            tipoOtroInput.style.display = 'block';
+            tipoOtroInput.required = true;
+        } else {
+            tipoOtroInput.style.display = 'none';
+            tipoOtroInput.required = false;
+            tipoOtroInput.value = '';
+        }
+    }
+
+    function mostrarModalReactivarDispositivo(data) {
+        const addModal = bootstrap.Modal.getInstance(document.getElementById('addModal'));
+        if (addModal) addModal.hide();
+
+        document.getElementById('reactivar_tipo').value = data.tipo || 'Otro';
+        document.getElementById('reactivar_tipo_otro').value = '';
+        toggleReactivarTipoOtro();
+        if (data.tipo && document.getElementById('reactivar_tipo').value !== data.tipo) {
+            document.getElementById('reactivar_tipo').value = 'Otro';
+            document.getElementById('reactivar_tipo_otro').value = data.tipo;
+            toggleReactivarTipoOtro();
+        }
+        document.getElementById('reactivar_marca').value = data.marca || '';
+        document.getElementById('reactivar_modelo').value = data.modelo || '';
+        document.getElementById('reactivar_color').value = data.color || '';
+        document.getElementById('reactivar_serial').value = data.serial || '';
+        document.getElementById('reactivar_cantidad').value = data.cantidad || 1;
+        document.getElementById('reactivar_precio_compra').value = '';
+        document.getElementById('reactivar_precio_cliente').value = formatearPesos((data.precio_cliente || 0).toString());
+        document.getElementById('reactivar_precio_patinado').value = formatearPesos((data.precio_patinado || 0).toString());
+        document.getElementById('reactivar_estado').value = 'Patinado';
+        document.getElementById('reactivar_notas').value = 'Reingreso - ' + (data.notas || '');
+
+        const infoText = `Tipo: ${data.tipo} | Serial: ${data.serial || 'N/A'} | Ingresos anteriores: ${data.veces_ingresado}`;
+        document.getElementById('reactivarDispositivoInfo').textContent = infoText;
+
+        document.getElementById('reactivarDispositivoForm').action = `/reactivar_dispositivo/${data.id}`;
+
+        const modal = new bootstrap.Modal(document.getElementById('reactivarDispositivoModal'));
+        modal.show();
+    }
+
+    const reactivarTipoSelect = document.getElementById('reactivar_tipo');
+    if (reactivarTipoSelect) {
+        reactivarTipoSelect.addEventListener('change', toggleReactivarTipoOtro);
+    }
+
     // Manejo de estado -> requiere tercero cuando es patinado
     function toggleTerceroSelect(selectEl) {
         const form = selectEl.closest('form');
@@ -771,6 +977,9 @@
     
     // Actualizar clases de color del select de estado
     function updateEstadoSelectColor(selectEl, estado) {
+        if (estado === 'Cliente') {
+            estado = 'local';
+        }
         selectEl.classList.remove('bg-danger', 'bg-secondary', 'bg-success', 'bg-warning', 'text-white', 'text-dark');
         if (estado === 'Patinado') {
             selectEl.classList.add('bg-danger', 'text-white');
@@ -858,8 +1067,18 @@
     }
     
     // === SISTEMA DE FACTURACIÓN ===
-    const facturaModal = new bootstrap.Modal(document.getElementById('facturaModal'));
+    let facturaModal = null;
     let dispositivoActualVenta = null;
+
+    function getFacturaModal() {
+        if (!facturaModal && window.bootstrap) {
+            const modalEl = document.getElementById('facturaModal');
+            if (modalEl) {
+                facturaModal = new bootstrap.Modal(modalEl);
+            }
+        }
+        return facturaModal;
+    }
     
     // Función para actualizar precio según tipo de venta
     function actualizarPrecioVenta() {
@@ -922,8 +1141,22 @@
                 document.getElementById('factura-cliente-telefono').value = '';
                 document.getElementById('factura-cliente-direccion').value = '';
                 document.getElementById('factura-metodo-pago').value = 'Efectivo';
+
+                const btnSoloVender = document.getElementById('btn-solo-vender');
+                if (btnSoloVender) {
+                    btnSoloVender.disabled = false;
+                    btnSoloVender.innerHTML = '✓ Solo Vender';
+                }
+                const btnVenderFactura = document.getElementById('btn-vender-factura');
+                if (btnVenderFactura) {
+                    btnVenderFactura.disabled = false;
+                    btnVenderFactura.innerHTML = '📄 Vender + Descargar PDF';
+                }
                 
-                facturaModal.show();
+                const modal = getFacturaModal();
+                if (modal) {
+                    modal.show();
+                }
             } else {
                 showToast(data.error || 'Error al cargar dispositivo', 'error');
             }
@@ -973,9 +1206,13 @@
             const data = await response.json();
             
             if (data.success) {
+                const estadoNuevo = data.estado || 'Vendido';
                 showToast(data.message, 'success');
-                facturaModal.hide();
-                actualizarUIVendido(id);
+                const modal = getFacturaModal();
+                if (modal) {
+                    modal.hide();
+                }
+                actualizarUIVendido(id, estadoNuevo);
             } else {
                 if (btnSoloVender) {
                     btnSoloVender.disabled = false;
@@ -1006,40 +1243,7 @@
         const id = document.getElementById('factura-dispositivo-id').value;
         const tipoVenta = obtenerTipoVenta();
         
-        // Primero registrar la venta
         try {
-            const responseVenta = await fetch(`/api/dispositivo/vender/${id}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ tipo_venta: tipoVenta }),
-                credentials: 'same-origin'
-            });
-            
-            if (responseVenta.redirected) {
-                showToast('Sesión expirada', 'error');
-                const btnVenderFactura = document.getElementById('btn-vender-factura');
-                if (btnVenderFactura) {
-                    btnVenderFactura.disabled = false;
-                    btnVenderFactura.innerHTML = 'Vender y Facturar';
-                }
-                return;
-            }
-            
-            const dataVenta = await responseVenta.json();
-            
-            if (!dataVenta.success) {
-                const btnVenderFactura = document.getElementById('btn-vender-factura');
-                if (btnVenderFactura) {
-                    btnVenderFactura.disabled = false;
-                    btnVenderFactura.innerHTML = 'Vender y Facturar';
-                }
-                showToast(dataVenta.error || 'Error al vender', 'error');
-                return;
-            }
-            
-            // Ahora generar y descargar el PDF
             const datosCliente = {
                 tipo_venta: tipoVenta,
                 cliente_nombre: document.getElementById('factura-cliente-nombre').value || 'Consumidor Final',
@@ -1058,6 +1262,15 @@
                 credentials: 'same-origin'
             });
             
+            if (responsePDF.redirected) {
+                showToast('Sesión expirada', 'error');
+                if (btnVenderFactura) {
+                    btnVenderFactura.disabled = false;
+                    btnVenderFactura.innerHTML = 'Vender y Facturar';
+                }
+                return;
+            }
+
             if (responsePDF.ok) {
                 // Descargar el PDF
                 const blob = await responsePDF.blob();
@@ -1070,13 +1283,28 @@
                 window.URL.revokeObjectURL(url);
                 a.remove();
                 
-                showToast(dataVenta.message + ' - Factura descargada', 'success');
+                showToast('Venta registrada y factura descargada', 'success');
             } else {
-                showToast(dataVenta.message + ' (Error al generar PDF)', 'warning');
+                let mensajeError = 'Error al generar PDF';
+                const contentType = responsePDF.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const data = await responsePDF.json();
+                    mensajeError = data.error || mensajeError;
+                }
+                showToast(mensajeError, 'warning');
+                if (btnVenderFactura) {
+                    btnVenderFactura.disabled = false;
+                    btnVenderFactura.innerHTML = 'Vender y Facturar';
+                }
+                return;
             }
             
-            facturaModal.hide();
-            actualizarUIVendido(id);
+            const modal = getFacturaModal();
+            if (modal) {
+                modal.hide();
+            }
+            const estadoNuevo = (tipoVenta === 'patinado') ? 'Patinado' : 'Vendido';
+            actualizarUIVendido(id, estadoNuevo);
             
         } catch (error) {
             const btnVenderFactura = document.getElementById('btn-vender-factura');
@@ -1090,13 +1318,13 @@
     }
     
     // Actualizar UI después de vender
-    function actualizarUIVendido(id) {
+    function actualizarUIVendido(id, nuevoEstado = 'Vendido') {
         // Actualizar el select de estado
         const selectEl = document.querySelector(`.estado-select-ajax[data-id="${id}"]`);
         if (selectEl) {
-            selectEl.value = 'Vendido';
-            selectEl.dataset.estadoOriginal = 'Vendido';
-            updateEstadoSelectColor(selectEl, 'Vendido');
+            selectEl.value = nuevoEstado;
+            selectEl.dataset.estadoOriginal = nuevoEstado;
+            updateEstadoSelectColor(selectEl, nuevoEstado);
         }
         
         // Actualizar botones de acción
@@ -1109,8 +1337,13 @@
             
             if (!accionesContainer.querySelector('.vendido-badge')) {
                 const badge = document.createElement('span');
-                badge.className = 'badge bg-success align-self-center vendido-badge';
-                badge.textContent = 'Vendido';
+                badge.className = 'badge align-self-center vendido-badge';
+                if (nuevoEstado === 'Patinado') {
+                    badge.classList.add('bg-warning', 'text-dark');
+                } else {
+                    badge.classList.add('bg-success');
+                }
+                badge.textContent = nuevoEstado;
                 accionesContainer.insertBefore(badge, accionesContainer.querySelector('.btn-eliminar-ajax'));
             }
         }
@@ -1118,6 +1351,14 @@
         // Ocultar selector de tercero
         const terceroSelect = document.querySelector(`.tercero-selector-ajax[data-id="${id}"]`);
         if (terceroSelect) terceroSelect.style.display = 'none';
+
+        // Quitar la fila del stock (venta saca el dispositivo del inventario)
+        const row = document.querySelector(`.estado-container[data-id="${id}"]`)?.closest('tr');
+        if (row) {
+            row.style.transition = 'opacity 0.3s';
+            row.style.opacity = '0';
+            setTimeout(() => row.remove(), 300);
+        }
     }
     
     // Event listeners para modal de factura
@@ -1220,7 +1461,17 @@
     });
     
     // === FUNCIONES PARA EDICIÓN EN MODAL ===
-    const editModal = new bootstrap.Modal(document.getElementById('editModalAjax'));
+    let editModal = null;
+
+    function getEditModal() {
+        if (!editModal && window.bootstrap) {
+            const modalEl = document.getElementById('editModalAjax');
+            if (modalEl) {
+                editModal = new bootstrap.Modal(modalEl);
+            }
+        }
+        return editModal;
+    }
     
     // Formatear número como pesos
     function formatearPesosEdit(num) {
@@ -1254,6 +1505,7 @@
                 document.getElementById('edit-tipo').value = d.tipo;
                 document.getElementById('edit-marca').value = d.marca || '';
                 document.getElementById('edit-modelo').value = d.modelo || '';
+                document.getElementById('edit-color').value = d.color || '';
                 document.getElementById('edit-serial').value = d.serial || '';
                 document.getElementById('edit-precio_compra').value = formatearPesosEdit(d.precio_compra);
                 document.getElementById('edit-precio_cliente').value = formatearPesosEdit(d.precio_cliente);
@@ -1263,7 +1515,10 @@
                 document.getElementById('edit-especificaciones').value = d.especificaciones || '';
                 document.getElementById('edit-notas').value = d.notas || '';
                 
-                editModal.show();
+                const modal = getEditModal();
+                if (modal) {
+                    modal.show();
+                }
             } else {
                 showToast(data.error || 'Error al cargar dispositivo', 'error');
             }
@@ -1280,6 +1535,7 @@
             tipo: document.getElementById('edit-tipo').value,
             marca: document.getElementById('edit-marca').value,
             modelo: document.getElementById('edit-modelo').value,
+            color: document.getElementById('edit-color').value,
             serial: document.getElementById('edit-serial').value,
             precio_compra: document.getElementById('edit-precio_compra').value,
             precio_cliente: document.getElementById('edit-precio_cliente').value,
@@ -1309,14 +1565,17 @@
             
             if (data.success) {
                 showToast(data.message, 'success');
-                editModal.hide();
+                const modal = getEditModal();
+                if (modal) {
+                    modal.hide();
+                }
                 
                 // Actualizar la fila en la tabla
                 const row = document.querySelector(`.estado-container[data-id="${id}"]`)?.closest('tr');
                 if (row && data.dispositivo) {
                     const d = data.dispositivo;
                     const cells = row.querySelectorAll('td');
-                    if (cells.length >= 9) {
+                    if (cells.length >= 10) {
                         cells[0].innerHTML = `<span class="badge bg-info">${d.tipo}</span>`;
                         cells[1].textContent = d.marca;
                         cells[2].textContent = d.modelo;
