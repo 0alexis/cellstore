@@ -1,15 +1,6 @@
 {% extends "base.html" %}
 {% block page_content %}
 <!-- Navegación -->
-<nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
-    <div class="container">
-        <ul class="navbar-nav me-auto">
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Stock</a></li>
-            <li class="nav-item"><a class="nav-link active" href="{{ url_for('caja') }}">Caja</a></li>
-        </ul>
-        <span class="navbar-text">Rol: {{ user.role }} | Usuario: {{ user.username }}</span>
-    </div>
-</nav>
 
 <h2 class="mb-3">Caja - {% if recientes %}Últimas 50 Transacciones{% else %}Todas las Transacciones{% endif %}</h2>
 
