@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Factura Manual{% endblock %}
+{% block page_content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">📄 Generar Factura Manual</h4>
+                    <small>Ingresa los datos manualmente para generar un PDF (sin guardar en base de datos)</small>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('generar_factura_manual') }}" id="facturaForm">
+                        <!-- Datos del Cliente -->
+                        <h5 class="border-bottom pb-2 mb-3">👤 Datos del Cliente</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre</label>
+                                <input type="text" name="cliente_nombre" class="form-control" placeholder="Consumidor Final" value="Consumidor Final">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Cédula/NIT</label>
+                                <input type="text" name="cliente_cedula" class="form-control" placeholder="Opcional">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Teléfono</label>
+                                <input type="text" name="cliente_telefono" class="form-control" placeholder="Opcional">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Dirección</label>
+                                <input type="text" name="cliente_direccion" class="form-control" placeholder="Opcional">
+                            </div>
+                        </div>
+                        
+                        <!-- Productos -->
+                        <h5 class="border-bottom pb-2 mb-3 mt-4">📦 Productos / Servicios</h5>
+                        <div id="productos-container">
+                            <div class="producto-row card mb-3 p-3 bg-light">
+                                <div class="row align-items-end">
+                                    <div class="col-md-5 mb-2">
+                                        <label class="form-label">Descripción</label>
+                                        <input type="text" name="descripcion[]" class="form-control" placeholder="Ej: iPhone 13 128GB" required>
+                                    </div>
+                                    <div class="col-md-2 mb-2">
+                                        <label class="form-label">Cant.</label>
+                                        <input type="number" name="cantidad[]" class="form-control cantidad-input" value="1" min="1">
+                                    </div>
+                                    <div class="col-md-3 mb-2">
+                                        <label class="form-label">Precio</label>
+                                        <input type="text" name="precio[]" class="form-control precio-input" placeholder="$0" required>
+                                    </div>
+                                    <div class="col-md-2 mb-2 text-end">
+                                        <button type="button" class="btn btn-outline-danger btn-sm btn-quitar" style="display:none;" onclick="quitarProducto(this)">✕ Quitar</button>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label"><small>📱 IMEI 1</small></label>
+                                        <input type="text" name="imei1[]" class="form-control form-control-sm" placeholder="Opcional - 15 dígitos" maxlength="15">
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label"><small>📱 IMEI 2</small></label>
+                                        <input type="text" name="imei2[]" class="form-control form-control-sm" placeholder="Opcional - 15 dígitos" maxlength="15">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button type="button" class="btn btn-outline-primary btn-sm mb-3" onclick="agregarProducto()">
+                            + Agregar otro producto
+                        </button>
+                        
+                        <!-- Total -->
+                        <div class="alert alert-info">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="fs-5"><strong>Total:</strong></span>
+                                <span class="fs-4 fw-bold" id="total-display">$0</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Método de Pago -->
+                        <div class="mb-3">
+                            <label class="form-label">Método de Pago</label>
+                            <select name="metodo_pago" class="form-select">
+                                <option value="Efectivo">Efectivo</option>
+                                <option value="Transferencia">Transferencia</option>
+                                <option value="Tarjeta">Tarjeta</option>
+                                <option value="Mixto">Mixto</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Botones -->
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                📄 Descargar Factura PDF
+                            </button>
+                            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function agregarProducto() {
+    const container = document.getElementById('productos-container');
+    const rows = container.querySelectorAll('.producto-row');
+    
+    // Mostrar botón quitar en todas las filas existentes
+    rows.forEach(row => {
+        const btn = row.querySelector('.btn-quitar');
+        if (btn) btn.style.display = 'inline-block';
+    });
+    
+    const newRow = document.createElement('div');
+    newRow.className = 'producto-row card mb-3 p-3 bg-light';
+    newRow.innerHTML = `
+        <div class="row align-items-end">
+            <div class="col-md-5 mb-2">
+                <input type="text" name="descripcion[]" class="form-control" placeholder="Descripción del producto" required>
+            </div>
+            <div class="col-md-2 mb-2">
+                <input type="number" name="cantidad[]" class="form-control cantidad-input" value="1" min="1">
+            </div>
+            <div class="col-md-3 mb-2">
+                <input type="text" name="precio[]" class="form-control precio-input" placeholder="$0" required>
+            </div>
+            <div class="col-md-2 mb-2 text-end">
+                <button type="button" class="btn btn-outline-danger btn-sm btn-quitar" onclick="quitarProducto(this)">✕ Quitar</button>
+            </div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-6 mb-2">
+                <label class="form-label"><small>📱 IMEI 1</small></label>
+                <input type="text" name="imei1[]" class="form-control form-control-sm" placeholder="Opcional - 15 dígitos" maxlength="15">
+            </div>
+            <div class="col-md-6 mb-2">
+                <label class="form-label"><small>📱 IMEI 2</small></label>
+                <input type="text" name="imei2[]" class="form-control form-control-sm" placeholder="Opcional - 15 dígitos" maxlength="15">
+            </div>
+        </div>
+    `;
+    container.appendChild(newRow);
+    
+    // Agregar eventos de formateo y cálculo
+    const precioInput = newRow.querySelector('.precio-input');
+    precioInput.addEventListener('input', formatearPrecio);
+    precioInput.addEventListener('input', calcularTotal);
+    
+    const cantidadInput = newRow.querySelector('.cantidad-input');
+    cantidadInput.addEventListener('input', calcularTotal);
+}
+
+function quitarProducto(btn) {
+    const container = document.getElementById('productos-container');
+    const row = btn.closest('.producto-row');
+    row.remove();
+    
+    // Si solo queda una fila, ocultar su botón quitar
+    const rows = container.querySelectorAll('.producto-row');
+    if (rows.length === 1) {
+        const lastBtn = rows[0].querySelector('.btn-quitar');
+        if (lastBtn) lastBtn.style.display = 'none';
+    }
+    
+    calcularTotal();
+}
+
+function formatearPrecio(e) {
+    let valor = e.target.value.replace(/\D/g, '');
+    if (valor) {
+        valor = parseInt(valor).toLocaleString('es-CO').replace(/,/g, '.');
+        e.target.value = '$' + valor;
+    }
+}
+
+function calcularTotal() {
+    let total = 0;
+    const rows = document.querySelectorAll('.producto-row');
+    
+    rows.forEach(row => {
+        const cantidad = parseInt(row.querySelector('.cantidad-input')?.value) || 1;
+        const precioStr = row.querySelector('.precio-input')?.value || '0';
+        const precio = parseInt(precioStr.replace(/\D/g, '')) || 0;
+        total += cantidad * precio;
+    });
+    
+    document.getElementById('total-display').textContent = '$' + total.toLocaleString('es-CO').replace(/,/g, '.');
+}
+
+// Inicializar eventos
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.precio-input').forEach(input => {
+        input.addEventListener('input', formatearPrecio);
+        input.addEventListener('input', calcularTotal);
+    });
+    
+    document.querySelectorAll('.cantidad-input').forEach(input => {
+        input.addEventListener('input', calcularTotal);
+    });
+});
+</script>
+{% endblock %}

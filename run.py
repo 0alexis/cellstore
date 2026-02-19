@@ -2,21 +2,36 @@
 """
 CellStore - Punto de entrada de la aplicación
 Script portable que funciona en cualquier PC sin modificar rutas
+Compatible con PyInstaller para generar .exe
 """
 import sys
 import os
 from pathlib import Path
 
-# Agregar directorio del proyecto al path (portable)
-BASE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(BASE_DIR))
+# Detectar si se ejecuta como .exe (PyInstaller)
+if getattr(sys, 'frozen', False):
+    # Ejecutándose como .exe compilado
+    BASE_DIR = Path(sys.executable).resolve().parent
+    # PyInstaller extrae archivos a _MEIPASS
+    BUNDLE_DIR = Path(sys._MEIPASS)
+else:
+    # Ejecutándose como script Python normal
+    BASE_DIR = Path(__file__).resolve().parent
+    BUNDLE_DIR = BASE_DIR
 
-# Cargar configuración antes de importar app
+sys.path.insert(0, str(BASE_DIR))
+sys.path.insert(0, str(BUNDLE_DIR))
+
+# Configurar variables de entorno para Flask
 os.environ.setdefault('FLASK_APP', 'app.py')
 
 # Cargar variables de entorno desde .env
 from dotenv import load_dotenv
-load_dotenv(BASE_DIR / '.env')
+# Buscar .env en el directorio del ejecutable (permite configuración externa)
+env_file = BASE_DIR / '.env'
+if not env_file.exists():
+    env_file = BUNDLE_DIR / '.env'
+load_dotenv(env_file)
 
 # Importar aplicación Flask desde app.py (monolítico por ahora)
 # TODO: Migrar a factory pattern con app_new/__init__.py
@@ -27,7 +42,7 @@ def main():
     
     # Obtener configuración desde .env
     host = os.getenv('HOST', '0.0.0.0')
-    port = int(os.getenv('PORT', 5001))
+    port = int(os.getenv('PORT', 5000)
     debug = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
     env = os.getenv('FLASK_ENV', 'development')
     

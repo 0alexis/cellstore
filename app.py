@@ -19,18 +19,34 @@ from reportlab.graphics.shapes import Drawing
 from reportlab.platypus import Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+import sys
+
+# Detectar si se ejecuta como .exe (PyInstaller) para rutas correctas
+if getattr(sys, 'frozen', False):
+    # Ejecutándose como .exe - usar directorio del bundle
+    _base_path = sys._MEIPASS
+    _exe_dir = os.path.dirname(sys.executable)
+else:
+    # Ejecutándose como script Python
+    _base_path = os.path.dirname(__file__)
+    _exe_dir = _base_path
 
 # Configurar rutas para templates y static (estructura organizada)
-template_dir = os.path.join(os.path.dirname(__file__), 'app_new', 'templates')
-static_dir = os.path.join(os.path.dirname(__file__), 'app_new', 'static')
+template_dir = os.path.join(_base_path, 'app_new', 'templates')
+static_dir = os.path.join(_base_path, 'app_new', 'static')
 
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = 'tu_clave_secreta_cambia_esto'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:root@localhost/inventario'  # ¡Cambiado a "inventario"! Cambia "tu_password"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = os.path.join(static_dir, 'uploads')
+# Uploads: usar directorio del ejecutable para que sea persistente
+app.config['UPLOAD_FOLDER'] = os.path.join(_exe_dir, 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+# Crear carpeta uploads si no existe
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -71,6 +87,8 @@ def agregar_logo_pdf(elements, config, ticket_width):
     """Agrega logo al PDF si existe en la configuración"""
     if config and config.logo_filename:
         logo_path = os.path.join(app.config['UPLOAD_FOLDER'], config.logo_filename)
+        print(f"[DEBUG LOGO] Buscando logo en: {logo_path}")
+        print(f"[DEBUG LOGO] Existe: {os.path.exists(logo_path)}")
         if os.path.exists(logo_path):
             try:
                 # Calcular tamaño proporcional (max 150px ancho, 60px alto)
@@ -88,8 +106,11 @@ def agregar_logo_pdf(elements, config, ticket_width):
                 img.hAlign = 'CENTER'
                 elements.append(img)
                 elements.append(Spacer(1, 0.05 * inch))
-            except:
-                pass  # Si hay error, continuar sin logo
+                print(f"[DEBUG LOGO] Logo agregado exitosamente")
+            except Exception as e:
+                print(f"[DEBUG LOGO] Error al agregar logo: {e}")
+    else:
+        print(f"[DEBUG LOGO] No hay logo configurado. config={config}, logo_filename={config.logo_filename if config else 'N/A'}")
 
 # Función auxiliar para agregar QR de Instagram al PDF
 def agregar_qr_pdf(elements, config, size=70):
@@ -2742,6 +2763,223 @@ def guardar_configuracion():
     db.session.commit()
     flash('Configuración guardada exitosamente.', 'success')
     return redirect(url_for('configuracion_empresa'))
+
+# === FACTURA MANUAL (datos ingresados manualmente, sin base de datos) ===
+@app.route('/factura_manual')
+@login_required
+def factura_manual():
+    """Página para generar facturas manuales"""
+    config = ConfiguracionEmpresa.query.first()
+    return render_template('factura_manual.html', user=current_user, config=config)
+
+@app.route('/generar_factura_manual', methods=['POST'])
+@login_required
+def generar_factura_manual():
+    """Genera un PDF de factura con datos ingresados manualmente"""
+    from reportlab.lib.pagesizes import inch
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from io import BytesIO
+    
+    # Obtener datos del formulario
+    cliente_nombre = request.form.get('cliente_nombre', 'Consumidor Final')
+    cliente_cedula = request.form.get('cliente_cedula', '')
+    cliente_telefono = request.form.get('cliente_telefono', '')
+    cliente_direccion = request.form.get('cliente_direccion', '')
+    metodo_pago = request.form.get('metodo_pago', 'Efectivo')
+    
+    # Obtener items (arrays)
+    descripciones = request.form.getlist('descripcion[]')
+    cantidades = request.form.getlist('cantidad[]')
+    precios = request.form.getlist('precio[]')
+    imei1_list = request.form.getlist('imei1[]')
+    imei2_list = request.form.getlist('imei2[]')
+    
+    # Calcular total
+    items = []
+    total = 0
+    for i, (desc, cant, precio) in enumerate(zip(descripciones, cantidades, precios)):
+        if desc.strip():
+            try:
+                c = int(cant) if cant else 1
+                p = float(precio.replace('.', '').replace(',', '').replace('$', '')) if precio else 0
+                subtotal = c * p
+                total += subtotal
+                imei1 = imei1_list[i].strip() if i < len(imei1_list) else ''
+                imei2 = imei2_list[i].strip() if i < len(imei2_list) else ''
+                items.append({
+                    'descripcion': desc,
+                    'cantidad': c,
+                    'precio': p,
+                    'subtotal': subtotal,
+                    'imei1': imei1,
+                    'imei2': imei2
+                })
+            except:
+                pass
+    
+    if not items:
+        flash('Debes agregar al menos un producto', 'error')
+        return redirect(url_for('factura_manual'))
+    
+    # Obtener configuración de empresa
+    config = ConfiguracionEmpresa.query.first()
+    empresa_nombre = config.nombre if config else 'CellStore'
+    empresa_nit = config.nit if config else ''
+    empresa_telefono = config.telefono if config else ''
+    empresa_direccion = config.direccion if config else ''
+    
+    # Generar PDF formato ticket térmico 80mm
+    buffer = BytesIO()
+    ticket_width = 76 * 2.83465  # 76mm en puntos
+    ticket_height = 14 * inch
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=(ticket_width, ticket_height),
+        rightMargin=5,
+        leftMargin=5,
+        topMargin=5,
+        bottomMargin=5
+    )
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Estilos (mismo formato que otras facturas)
+    title_style = ParagraphStyle(
+        'TicketTitle',
+        parent=styles['Heading1'],
+        fontSize=12,
+        textColor=colors.black,
+        spaceAfter=6,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    subtitle_style = ParagraphStyle(
+        'TicketSubtitle',
+        parent=styles['Normal'],
+        fontSize=8,
+        alignment=TA_CENTER,
+        spaceAfter=3
+    )
+    normal_style = ParagraphStyle(
+        'TicketNormal',
+        parent=styles['Normal'],
+        fontSize=8,
+        spaceAfter=2
+    )
+    bold_style = ParagraphStyle('Bold', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold')
+    
+    # Logo de la empresa
+    agregar_logo_pdf(elements, config, ticket_width)
+    
+    # Encabezado
+    elements.append(Paragraph(f"<b>{empresa_nombre}</b>", title_style))
+    if empresa_nit:
+        elements.append(Paragraph(f"NIT: {empresa_nit}", subtitle_style))
+    if empresa_telefono:
+        elements.append(Paragraph(f"Tel: {empresa_telefono}", subtitle_style))
+    if empresa_direccion:
+        elements.append(Paragraph(empresa_direccion, subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    elements.append(Paragraph("<b>FACTURA DE VENTA</b>", title_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    
+    # Fecha
+    fecha_actual = obtener_fecha_bogota()
+    elements.append(Paragraph(f"Fecha: {fecha_actual.strftime('%d/%m/%Y %H:%M')}", subtitle_style))
+    elements.append(Spacer(1, 0.05 * inch))
+    
+    # Cliente
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    if cliente_nombre and cliente_nombre != 'Consumidor Final':
+        elements.append(Paragraph(f"<b>Cliente:</b> {cliente_nombre}", normal_style))
+        if cliente_cedula:
+            elements.append(Paragraph(f"<b>CC/NIT:</b> {cliente_cedula}", normal_style))
+        if cliente_telefono:
+            elements.append(Paragraph(f"<b>Tel:</b> {cliente_telefono}", normal_style))
+        if cliente_direccion:
+            elements.append(Paragraph(f"<b>Dir:</b> {cliente_direccion}", normal_style))
+        elements.append(Spacer(1, 0.05 * inch))
+    else:
+        elements.append(Paragraph(f"<b>Cliente:</b> Consumidor Final", normal_style))
+        elements.append(Spacer(1, 0.05 * inch))
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    elements.append(Spacer(1, 0.05 * inch))
+    
+    # Productos
+    elements.append(Paragraph("-" * 40, subtitle_style))
+    elements.append(Paragraph("<b>DETALLE DE PRODUCTOS</b>", bold_style))
+    elements.append(Spacer(1, 0.05 * inch))
+    
+    for item in items:
+        elements.append(Paragraph(f"• {item['descripcion']}", normal_style))
+        elements.append(Paragraph(f"  {item['cantidad']} x {formato_pesos(item['precio'])} = {formato_pesos(item['subtotal'])}", normal_style))
+        # Mostrar IMEI si están disponibles
+        if item.get('imei1'):
+            elements.append(Paragraph(f"  IMEI 1: {item['imei1']}", normal_style))
+        if item.get('imei2'):
+            elements.append(Paragraph(f"  IMEI 2: {item['imei2']}", normal_style))
+    
+    elements.append(Spacer(1, 0.1 * inch))
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    elements.append(Paragraph(f"<b>TOTAL: {formato_pesos(total)}</b>", ParagraphStyle('Total', parent=styles['Normal'], fontSize=12, fontName='Helvetica-Bold', alignment=TA_CENTER)))
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    
+    # Método de pago
+    elements.append(Spacer(1, 0.05 * inch))
+    elements.append(Paragraph(f"<b>Pago:</b> {metodo_pago}", normal_style))
+    elements.append(Spacer(1, 0.15 * inch))
+    
+    # Instagram QR
+    elements.append(Paragraph("=" * 40, subtitle_style))
+    if config and config.instagram_url:
+        elements.append(Paragraph("Síguenos en Instagram", subtitle_style))
+        agregar_qr_pdf(elements, config, size=70)
+    elements.append(Paragraph("<i>Gracias por su compra</i>", subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Términos de garantía
+    garantia_style = ParagraphStyle(
+        'GarantiaStyle',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+        spaceAfter=2,
+        alignment=TA_CENTER
+    )
+    elements.append(Paragraph("-" * 40, subtitle_style))
+    elements.append(Paragraph("<b>TÉRMINOS DE GARANTÍA</b>", garantia_style))
+    elements.append(Paragraph("Garantía de IMEI de por vida.", garantia_style))
+    elements.append(Paragraph("Garantía por funcionamiento: 2 meses.", garantia_style))
+    elements.append(Paragraph("La garantía NO cubre: daños por maltrato, golpes, humedad, display, táctil, sobrecarga o equipos apagados.", garantia_style))
+    elements.append(Paragraph("La garantía NO cubre modificación de software mal instalado por cliente, ni daños al software original.", garantia_style))
+    elements.append(Paragraph("<b>SIN FACTURA NO HAY GARANTÍA.</b>", garantia_style))
+    elements.append(Paragraph("Si el daño no está cubierto por garantía, debe cancelarse el costo de revisión y/o arreglo.", garantia_style))
+    elements.append(Paragraph("Equipos con bloqueo de registro no tienen garantía.", garantia_style))
+    elements.append(Paragraph("-" * 40, subtitle_style))
+    elements.append(Spacer(1, 0.05 * inch))
+    elements.append(Paragraph("<i>Sin validez fiscal</i>", subtitle_style))
+    
+    # Firma
+    elements.append(Spacer(1, 0.3 * inch))
+    elements.append(Paragraph("_" * 30, subtitle_style))
+    elements.append(Paragraph("<b>Firma del Cliente</b>", subtitle_style))
+    elements.append(Spacer(1, 0.1 * inch))
+    
+    # Construir PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    # Enviar PDF
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"Factura_Manual_{fecha_actual.strftime('%Y%m%d_%H%M%S')}.pdf",
+        mimetype='application/pdf'
+    )
 
 if __name__ == '__main__':
     app.run(debug=True)
