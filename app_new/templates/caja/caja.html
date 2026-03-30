@@ -2,7 +2,10 @@
 {% block page_content %}
 <!-- Navegación -->
 
-<h2 class="mb-3">Caja - {% if recientes %}Últimas 50 Transacciones{% else %}Todas las Transacciones{% endif %}</h2>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Caja - {% if recientes %}Últimas 50 Transacciones{% else %}Todas las Transacciones{% endif %}</h2>
+    <a href="{{ url_for('deudas') }}" class="btn btn-outline-primary">📋 Gestión de Deudas</a>
+</div>
 
 <!-- Cards Resumen -->
 <div class="row g-2 mb-3">

@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+{% block page_content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">📋 Gestión de Deudas</h2>
+    <div>
+        <a href="{{ url_for('caja') }}" class="btn btn-outline-secondary me-2">← Volver a Caja</a>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#nuevaDeudaModal">+ Nueva Deuda</button>
+    </div>
+</div>
+
+<!-- Cards Resumen -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #198754 !important;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small text-muted">Me deben</div>
+                        <h4 class="fw-bold text-success mb-0">{{ total_me_deben|pesos }}</h4>
+                    </div>
+                    <div class="rounded-circle bg-success bg-opacity-10 p-2">
+                        <span style="font-size: 1.5rem;">💰</span>
+                    </div>
+                </div>
+                <small class="text-muted">{{ cant_me_deben }} deuda{{ 's' if cant_me_deben != 1 }} pendiente{{ 's' if cant_me_deben != 1 }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #dc3545 !important;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small text-muted">Yo debo</div>
+                        <h4 class="fw-bold text-danger mb-0">{{ total_yo_debo|pesos }}</h4>
+                    </div>
+                    <div class="rounded-circle bg-danger bg-opacity-10 p-2">
+                        <span style="font-size: 1.5rem;">📤</span>
+                    </div>
+                </div>
+                <small class="text-muted">{{ cant_yo_debo }} deuda{{ 's' if cant_yo_debo != 1 }} pendiente{{ 's' if cant_yo_debo != 1 }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #0d6efd !important;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small text-muted">Balance</div>
+                        <h4 class="fw-bold mb-0 {% if (total_me_deben - total_yo_debo) >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {{ (total_me_deben - total_yo_debo)|pesos }}
+                        </h4>
+                    </div>
+                    <div class="rounded-circle bg-primary bg-opacity-10 p-2">
+                        <span style="font-size: 1.5rem;">⚖️</span>
+                    </div>
+                </div>
+                <small class="text-muted">A favor / En contra</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #6c757d !important;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small text-muted">Total Deudas</div>
+                        <h4 class="fw-bold mb-0">{{ deudas|length }}</h4>
+                    </div>
+                    <div class="rounded-circle bg-secondary bg-opacity-10 p-2">
+                        <span style="font-size: 1.5rem;">📊</span>
+                    </div>
+                </div>
+                <small class="text-muted">Registros mostrados</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3">
+    <div class="card-body p-3">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label mb-1">Buscar</label>
+                <input type="text" name="buscar" class="form-control" placeholder="Nombre o concepto..." value="{{ buscar }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">Tipo</label>
+                <select name="tipo" class="form-select">
+                    <option value="">Todos</option>
+                    <option value="me_deben" {% if tipo_filtro == 'me_deben' %}selected{% endif %}>Me deben</option>
+                    <option value="yo_debo" {% if tipo_filtro == 'yo_debo' %}selected{% endif %}>Yo debo</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label mb-1">Estado</label>
+                <select name="estado" class="form-select">
+                    <option value="pendientes" {% if estado_filtro == 'pendientes' %}selected{% endif %}>Pendientes</option>
+                    <option value="pagadas" {% if estado_filtro == 'pagadas' %}selected{% endif %}>Pagadas</option>
+                    <option value="todas" {% if estado_filtro == 'todas' %}selected{% endif %}>Todas</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Filtrar</button>
+                {% if tipo_filtro or estado_filtro != 'pendientes' or buscar %}
+                    <a href="{{ url_for('deudas') }}" class="btn btn-outline-danger">Limpiar</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tabla de Deudas -->
+<div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th>#</th>
+                <th>Tipo</th>
+                <th>Persona</th>
+                <th>Concepto</th>
+                <th>Monto Original</th>
+                <th>Pendiente</th>
+                <th>Estado</th>
+                <th>Fecha</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if deudas %}
+                {% for d in deudas %}
+                <tr>
+                    <td><strong>{{ d.id }}</strong></td>
+                    <td>
+                        {% if d.tipo_deuda == 'me_deben' %}
+                            <span class="badge bg-success">💰 Me deben</span>
+                        {% else %}
+                            <span class="badge bg-danger">📤 Yo debo</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ d.cliente_nombre }}</strong></td>
+                    <td>{{ d.concepto or 'Sin especificar' }}</td>
+                    <td>{{ (d.monto_original or d.monto_pendiente)|pesos }}</td>
+                    <td>
+                        <strong class="{% if d.monto_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ d.monto_pendiente|pesos }}
+                        </strong>
+                    </td>
+                    <td>
+                        {% if d.pagado %}
+                            <span class="badge bg-success">✅ Pagada</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">⏳ Pendiente</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <small>{{ d.fecha_creacion.strftime('%d/%m/%Y') if d.fecha_creacion else 'N/A' }}</small>
+                        {% if d.fecha_vencida %}
+                            <br><small class="text-muted">Vence: {{ d.fecha_vencida.strftime('%d/%m/%Y') }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            {% if not d.pagado %}
+                            <button class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#abonoModal{{ d.id }}" title="Abonar">💵 Abono</button>
+                            <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#aumentoModal{{ d.id }}" title="Aumentar">⬆️</button>
+                            {% endif %}
+                            <button class="btn btn-outline-info" onclick="verDetalle({{ d.id }})" title="Historial">📋</button>
+                            {% if current_user.role == 'Admin' %}
+                            <form method="POST" action="{{ url_for('eliminar_deuda', id=d.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar esta deuda de {{ d.cliente_nombre }}?')">
+                                <button type="submit" class="btn btn-outline-danger btn-sm" title="Eliminar">🗑️</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- Modal Abono -->
+                {% if not d.pagado %}
+                <div class="modal fade" id="abonoModal{{ d.id }}" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header bg-success text-white">
+                                <h5 class="modal-title">💵 Abonar a deuda de {{ d.cliente_nombre }}</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('abonar_deuda', id=d.id) }}">
+                                <input type="hidden" name="tipo_movimiento" value="abono">
+                                <div class="modal-body">
+                                    <div class="alert alert-info py-2">
+                                        <strong>Pendiente actual:</strong> {{ d.monto_pendiente|pesos }}
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Monto del abono *</label>
+                                        <input type="text" name="monto" class="form-control precio-deuda" placeholder="$0" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Descripción (opcional)</label>
+                                        <input type="text" name="descripcion" class="form-control" placeholder="Ej: Abono parcial, pago en efectivo...">
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                    <button type="submit" class="btn btn-success">💵 Registrar Abono</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Aumento -->
+                <div class="modal fade" id="aumentoModal{{ d.id }}" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header bg-warning text-dark">
+                                <h5 class="modal-title">⬆️ Aumentar deuda de {{ d.cliente_nombre }}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('abonar_deuda', id=d.id) }}">
+                                <input type="hidden" name="tipo_movimiento" value="aumento">
+                                <div class="modal-body">
+                                    <div class="alert alert-warning py-2">
+                                        <strong>Pendiente actual:</strong> {{ d.monto_pendiente|pesos }}
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Monto a aumentar *</label>
+                                        <input type="text" name="monto" class="form-control precio-deuda" placeholder="$0" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Motivo / Descripción *</label>
+                                        <input type="text" name="descripcion" class="form-control" placeholder="Ej: Nuevo celular, accesorio adicional..." required>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                    <button type="submit" class="btn btn-warning">⬆️ Aumentar Deuda</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="9" class="text-center py-4">
+                        <p class="mb-0 text-muted">No hay deudas registradas con estos filtros.</p>
+                        <button class="btn btn-success mt-2" data-bs-toggle="modal" data-bs-target="#nuevaDeudaModal">+ Registrar primera deuda</button>
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal Crear Nueva Deuda -->
+<div class="modal fade" id="nuevaDeudaModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">📋 Registrar Nueva Deuda</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('crear_deuda') }}">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipo de deuda *</label>
+                            <select name="tipo_deuda" class="form-select" id="tipoDeudaSelect">
+                                <option value="me_deben">💰 Me deben (alguien me debe)</option>
+                                <option value="yo_debo">📤 Yo debo (le debo a alguien)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label" id="labelPersona">Nombre de quién me debe *</label>
+                            <input type="text" name="cliente_nombre" class="form-control" placeholder="Ej: Juan Pérez" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Monto *</label>
+                            <input type="text" name="monto" class="form-control precio-deuda" placeholder="$0" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Concepto *</label>
+                            <input type="text" name="concepto" class="form-control" placeholder="Ej: iPhone 13, Laptop HP, Préstamo..." required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha de vencimiento (opcional)</label>
+                            <input type="date" name="fecha_vencida" class="form-control">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Notas (opcional)</label>
+                            <textarea name="notas" class="form-control" rows="1" placeholder="Notas adicionales..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">✅ Registrar Deuda</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Detalle / Historial -->
+<div class="modal fade" id="detalleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">📋 Historial de Movimientos</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detalleContent">
+                <div class="text-center py-4">
+                    <div class="spinner-border" role="status"></div>
+                    <p>Cargando...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Formatear precios en pesos colombianos
+function formatearPesosDeuda(e) {
+    let valor = e.target.value.replace(/\D/g, '');
+    if (valor) {
+        valor = parseInt(valor).toLocaleString('es-CO').replace(/,/g, '.');
+        e.target.value = '$' + valor;
+    }
+}
+
+document.querySelectorAll('.precio-deuda').forEach(input => {
+    input.addEventListener('input', formatearPesosDeuda);
+});
+
+// Observar modales para inicializar inputs dinámicos
+document.addEventListener('shown.bs.modal', function(e) {
+    e.target.querySelectorAll('.precio-deuda').forEach(input => {
+        input.removeEventListener('input', formatearPesosDeuda);
+        input.addEventListener('input', formatearPesosDeuda);
+    });
+});
+
+// Cambiar label según tipo de deuda
+const tipoSelect = document.getElementById('tipoDeudaSelect');
+const labelPersona = document.getElementById('labelPersona');
+if (tipoSelect) {
+    tipoSelect.addEventListener('change', function() {
+        if (this.value === 'me_deben') {
+            labelPersona.textContent = 'Nombre de quién me debe *';
+        } else {
+            labelPersona.textContent = 'Nombre de a quién le debo *';
+        }
+    });
+}
+
+// Ver detalle de deuda
+function verDetalle(deudaId) {
+    const modal = new bootstrap.Modal(document.getElementById('detalleModal'));
+    const content = document.getElementById('detalleContent');
+    content.innerHTML = '<div class="text-center py-4"><div class="spinner-border" role="status"></div><p>Cargando...</p></div>';
+    modal.show();
+    
+    fetch(`/deudas/detalle/${deudaId}`)
+        .then(r => r.json())
+        .then(data => {
+            let tipoLabel = data.tipo_deuda === 'me_deben' ? '<span class="badge bg-success">💰 Me deben</span>' : '<span class="badge bg-danger">📤 Yo debo</span>';
+            let estadoLabel = data.pagado ? '<span class="badge bg-success">✅ Pagada</span>' : '<span class="badge bg-warning text-dark">⏳ Pendiente</span>';
+            
+            let html = `
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <p><strong>Persona:</strong> ${data.cliente}</p>
+                        <p><strong>Tipo:</strong> ${tipoLabel}</p>
+                        <p><strong>Concepto:</strong> ${data.concepto || 'Sin especificar'}</p>
+                        ${data.notas ? `<p><strong>Notas:</strong> ${data.notas}</p>` : ''}
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Monto Original:</strong> ${formatPesos(data.monto_original)}</p>
+                        <p><strong>Pendiente:</strong> <strong class="${data.monto_pendiente > 0 ? 'text-danger' : 'text-success'}">${formatPesos(data.monto_pendiente)}</strong></p>
+                        <p><strong>Estado:</strong> ${estadoLabel}</p>
+                        <p><strong>Creada:</strong> ${data.fecha_creacion}</p>
+                        ${data.fecha_vencida ? `<p><strong>Vence:</strong> ${data.fecha_vencida}</p>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // Barra de progreso
+            let porcentaje = data.monto_original > 0 ? Math.round(((data.monto_original - data.monto_pendiente) / data.monto_original) * 100) : 0;
+            html += `
+                <div class="mb-3">
+                    <label class="form-label">Progreso de pago: ${porcentaje}%</label>
+                    <div class="progress" style="height: 20px;">
+                        <div class="progress-bar bg-success" style="width: ${porcentaje}%">${porcentaje}%</div>
+                    </div>
+                </div>
+            `;
+            
+            // Historial de abonos
+            html += '<h6 class="mt-4 mb-2">📝 Historial de Movimientos</h6>';
+            if (data.abonos && data.abonos.length > 0) {
+                html += '<div class="table-responsive"><table class="table table-sm table-striped"><thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Descripción</th></tr></thead><tbody>';
+                data.abonos.forEach(a => {
+                    let badgeClass = a.tipo === 'abono' ? 'bg-success' : 'bg-warning text-dark';
+                    let tipoText = a.tipo === 'abono' ? '💵 Abono' : '⬆️ Aumento';
+                    html += `<tr>
+                        <td>${a.fecha}</td>
+                        <td><span class="badge ${badgeClass}">${tipoText}</span></td>
+                        <td><strong>${a.monto_fmt}</strong></td>
+                        <td>${a.descripcion}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table></div>';
+            } else {
+                html += '<p class="text-muted text-center">No hay movimientos registrados aún.</p>';
+            }
+            
+            content.innerHTML = html;
+        })
+        .catch(err => {
+            content.innerHTML = '<div class="alert alert-danger">Error al cargar el detalle.</div>';
+        });
+}
+
+function formatPesos(valor) {
+    if (!valor && valor !== 0) return '$0';
+    return '$' + Math.round(valor).toLocaleString('es-CO').replace(/,/g, '.');
+}
+</script>
+{% endblock %}

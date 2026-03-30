@@ -191,6 +191,16 @@
     </div>
 </div>
 
+<!-- Función de formateo de pesos (debe estar antes de los modales que la usan) -->
+<script>
+function formatearPesos(valor) {
+    let numeros = String(valor).replace(/[^\d]/g, '');
+    if (!numeros) return '';
+    numeros = numeros.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return numeros;
+}
+</script>
+
 <!-- Modal para Agregar Celular (igual que antes, con IMEI1/2 y GB select) -->
 <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -225,17 +235,17 @@
                     <div class="row">
                         <div class="col-md-4 mb-3">
                             <label for="{{ form.precio_compra.id }}" class="form-label">Precio Compra <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="{{ form.precio_compra.id }}" name="{{ form.precio_compra.name }}" placeholder="Ej: 1500000" value="{{ form.precio_compra.data or '' }}" required>
+                            <input type="text" class="form-control" id="{{ form.precio_compra.id }}" name="{{ form.precio_compra.name }}" placeholder="Ej: $1.500.000" value="{{ form.precio_compra.data or '' }}" required oninput="this.value = formatearPesos(this.value)">
                             <div class="form-text">Costo de adquisición.</div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label for="{{ form.precio_cliente.id }}" class="form-label">Precio Cliente <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="{{ form.precio_cliente.id }}" name="{{ form.precio_cliente.name }}" placeholder="Ej: 2000000" value="{{ form.precio_cliente.data or '' }}" required>
+                            <input type="text" class="form-control" id="{{ form.precio_cliente.id }}" name="{{ form.precio_cliente.name }}" placeholder="Ej: $2.000.000" value="{{ form.precio_cliente.data or '' }}" required oninput="this.value = formatearPesos(this.value)">
                             <div class="form-text">Precio de venta al cliente.</div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label for="{{ form.precio_patinado.id }}" class="form-label">Precio Patinado <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="{{ form.precio_patinado.id }}" name="{{ form.precio_patinado.name }}" placeholder="Ej: 1800000" value="{{ form.precio_patinado.data or '' }}" required>
+                            <input type="text" class="form-control" id="{{ form.precio_patinado.id }}" name="{{ form.precio_patinado.name }}" placeholder="Ej: $1.800.000" value="{{ form.precio_patinado.data or '' }}" required oninput="this.value = formatearPesos(this.value)">
                             <div class="form-text">Precio para condición patinado/usado.</div>
                         </div>
                     </div>
@@ -467,12 +477,21 @@
                             <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editarModal{{ cel.id }}" onclick="cargarDatosEditar({{ cel.id }})">
                                 Editar
                             </button>
+                            {% if cel.estado == 'local' %}
                             <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#ventaModal{{ cel.id }}">
                                 Vendido
                             </button>
                             <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#retomaModal{{ cel.id }}">
                                 Retoma
                             </button>
+                            {% else %}
+                            <button type="button" class="btn btn-outline-success disabled" title="El celular debe estar en estado Local para vender" disabled>
+                                🔒 Vendido
+                            </button>
+                            <button type="button" class="btn btn-outline-info disabled" title="El celular debe estar en estado Local para retoma" disabled>
+                                🔒 Retoma
+                            </button>
+                            {% endif %}
                         </div>
                         {% else %}
                         <form method="POST" action="{{ url_for('reactivar_celular', id=cel.id) }}" class="d-inline">
@@ -1339,7 +1358,7 @@
     document.querySelectorAll('form[action*="retoma"]').forEach(form => {
         form.addEventListener('submit', function(e) {
             // Prevenir doble envío
-            const btnSubmit = form.querySelector('button[type="submit"]');
+            let btnSubmit = form.querySelector('button[type="submit"]');
             if (btnSubmit) {
                 if (btnSubmit.disabled) {
                     e.preventDefault();
@@ -1394,6 +1413,74 @@
                     pushHidden('dispo_serial[]', getVal('input[data-orig-name="dispo_serial[]"]') || getVal('input[name="dispo_serial[]"]'));
                     pushHidden('dispo_cantidad[]', getVal('input[data-orig-name="dispo_cantidad[]"]') || getVal('input[name="dispo_cantidad[]"]'));
                     pushHidden('dispo_notas[]', getVal('input[data-orig-name="dispo_notas[]"]') || getVal('input[name="dispo_notas[]"]'));
+                }
+            });
+
+            // Prevenir envío normal y usar fetch para manejar el PDF
+            e.preventDefault();
+            
+            const formData = new FormData(form);
+            btnSubmit = form.querySelector('button[type="submit"]');
+            
+            fetch(form.action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    // Obtener el nombre del archivo del header si existe
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = 'Retoma.pdf';
+                    if (contentDisposition) {
+                        const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                        if (match && match[1]) {
+                            filename = match[1].replace(/['"]/g, '');
+                        }
+                    }
+                    return response.blob().then(blob => ({ blob, filename }));
+                } else {
+                    throw new Error('Error al procesar la retoma');
+                }
+            })
+            .then(({ blob, filename }) => {
+                // Descargar el PDF
+                try {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    // Revocar después de un momento para no cancelar la descarga
+                    setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+                } catch(err) {
+                    console.error('Error descargando PDF:', err);
+                }
+                
+                // Cerrar el modal
+                try {
+                    const modal = form.closest('.modal');
+                    if (modal) {
+                        const bsModal = bootstrap.Modal.getInstance(modal);
+                        if (bsModal) bsModal.hide();
+                    }
+                } catch(err) {
+                    console.error('Error cerrando modal:', err);
+                }
+                
+                // Recargar la página después de un breve delay
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 500);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('❌ Error al procesar la retoma: ' + error.message);
+                // Restaurar botón
+                if (btnSubmit) {
+                    btnSubmit.disabled = false;
+                    btnSubmit.innerHTML = 'Confirmar Retoma';
                 }
             });
 

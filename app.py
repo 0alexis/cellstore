@@ -39,8 +39,8 @@ app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = 'tu_clave_secreta_cambia_esto'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:root@localhost/inventario'  # ¡Cambiado a "inventario"! Cambia "tu_password"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# Uploads: usar directorio del ejecutable para que sea persistente
-app.config['UPLOAD_FOLDER'] = os.path.join(_exe_dir, 'uploads')
+# Uploads: usar directorio static/uploads para que coincida con las URLs del template
+app.config['UPLOAD_FOLDER'] = os.path.join(static_dir, 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -131,11 +131,13 @@ def agregar_qr_pdf(elements, config, size=70):
 
 # Función para limpiar valores de pesos (remover puntos y convertir a float)
 def limpiar_pesos(valor):
-    """Limpia un valor con formato de pesos: '1.234.567,89' -> 1234567.89"""
+    """Limpia un valor con formato de pesos: '$1.234.567' o '1.234.567,89' -> 1234567.89"""
     if not valor:
         return 0.0
+    # Remover signos de peso y espacios
+    valor_limpio = str(valor).replace('$', '').replace(' ', '')
     # Remover puntos (separadores de miles)
-    valor_limpio = str(valor).replace('.', '')
+    valor_limpio = valor_limpio.replace('.', '')
     # Reemplazar coma por punto (decimales)
     valor_limpio = valor_limpio.replace(',', '.')
     try:
@@ -205,9 +207,24 @@ class Deuda(db.Model):
     tradein_id = db.Column(db.Integer, db.ForeignKey('tradein.id'), nullable=True)  # Referencia a tradein.id
     cliente_nombre = db.Column(db.String(100), nullable=False)
     monto_pendiente = db.Column(db.Float, nullable=False)
+    monto_original = db.Column(db.Float, default=0.0)  # Monto inicial de la deuda
+    tipo_deuda = db.Column(db.String(20), default='me_deben')  # 'me_deben' o 'yo_debo'
+    concepto = db.Column(db.String(200), nullable=True)  # De qué es la deuda (celular, dispositivo, etc.)
+    fecha_creacion = db.Column(db.DateTime, default=obtener_fecha_bogota)
     fecha_vencida = db.Column(db.Date, nullable=True)
     pagado = db.Column(db.Boolean, default=False)
     notas = db.Column(db.Text)
+    abonos = db.relationship('AbonoDeuda', backref='deuda', lazy=True, order_by='AbonoDeuda.fecha.desc()')
+
+# Modelo AbonoDeuda para registrar cada movimiento de abono o aumento
+class AbonoDeuda(db.Model):
+    __tablename__ = 'abono_deuda'
+    id = db.Column(db.Integer, primary_key=True)
+    deuda_id = db.Column(db.Integer, db.ForeignKey('deuda.id'), nullable=False)
+    monto = db.Column(db.Float, nullable=False)  # Positivo = abono, Negativo = aumento de deuda
+    tipo_movimiento = db.Column(db.String(20), nullable=False)  # 'abono' o 'aumento'
+    descripcion = db.Column(db.String(200), nullable=True)
+    fecha = db.Column(db.DateTime, default=obtener_fecha_bogota)
 
 # Modelos Celular y Transaccion
 class Tercero(db.Model):
@@ -247,7 +264,7 @@ class CelularForm(FlaskForm):
     gb = StringField('GB', validators=[DataRequired()])
     precio_cliente = StringField('Precio Cliente', validators=[DataRequired()])
     precio_patinado = StringField('Precio Patinado', validators=[DataRequired()])
-    estado = SelectField('Estado', choices=[('Patinado', 'Patinado'), ('Vendido', 'Vendido'), ('Servicio Técnico', 'Servicio Técnico')], validators=[DataRequired()])
+    estado = SelectField('Estado', choices=[('local', 'Local'), ('Patinado', 'Patinado'), ('Vendido', 'Vendido'), ('Servicio Técnico', 'Servicio Técnico')], validators=[DataRequired()])
     notas = TextAreaField('Notas (ej: Parte de pago)')
     submit = SubmitField('Guardar')
 
@@ -447,6 +464,54 @@ with app.app_context():
                     conn.commit()
         except Exception as mig_disp:
             print(f"Nota migración dispositivo: {mig_disp}")
+
+        # Migración: crear tabla abono_deuda si no existe
+        try:
+            if not inspector.has_table('abono_deuda'):
+                print("Creando tabla abono_deuda...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('''
+                        CREATE TABLE abono_deuda (
+                            id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                            deuda_id INTEGER NOT NULL,
+                            monto FLOAT NOT NULL,
+                            tipo_movimiento VARCHAR(20) NOT NULL,
+                            descripcion VARCHAR(200),
+                            fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (deuda_id) REFERENCES deuda(id)
+                        )
+                    '''))
+                    conn.commit()
+                print("✓ Tabla abono_deuda creada.")
+        except Exception as mig_abono:
+            print(f"Nota migración abono_deuda: {mig_abono}")
+
+        # Migración: agregar columnas nuevas en deuda si no existen
+        try:
+            columnas_deuda = [col['name'] for col in inspector.get_columns('deuda')]
+            if 'monto_original' not in columnas_deuda:
+                print("Migrando tabla deuda: agregando columna monto_original...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE deuda ADD COLUMN monto_original FLOAT DEFAULT 0.0'))
+                    conn.commit()
+            if 'tipo_deuda' not in columnas_deuda:
+                print("Migrando tabla deuda: agregando columna tipo_deuda...")
+                with db.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE deuda ADD COLUMN tipo_deuda VARCHAR(20) DEFAULT 'me_deben'"))
+                    conn.commit()
+            if 'concepto' not in columnas_deuda:
+                print("Migrando tabla deuda: agregando columna concepto...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE deuda ADD COLUMN concepto VARCHAR(200) NULL'))
+                    conn.commit()
+            if 'fecha_creacion' not in columnas_deuda:
+                print("Migrando tabla deuda: agregando columna fecha_creacion...")
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE deuda ADD COLUMN fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP'))
+                    conn.commit()
+        except Exception as mig_deuda:
+            print(f"Nota migración deuda: {mig_deuda}")
+
     except Exception as e:
         print(f"Nota migración: {e}")
 
@@ -1468,6 +1533,10 @@ def api_vender_celular(id):
     if not celular.en_stock:
         return jsonify({'success': False, 'error': 'Este celular ya fue vendido'}), 400
     
+    # Verificar que el estado sea 'local' para poder vender
+    if celular.estado != 'local':
+        return jsonify({'success': False, 'error': f'No se puede vender: el celular está en estado "{celular.estado}". Debe estar en estado "Local" para vender.'}), 400
+    
     data = request.get_json() or {}
     tipo_venta = data.get('tipo_venta', 'cliente')
     
@@ -1506,6 +1575,10 @@ def api_generar_factura_celular(id):
     # Verificar que el celular aún esté en stock para evitar doble venta
     if not celular.en_stock:
         return jsonify({'success': False, 'error': 'Este celular ya fue vendido'}), 400
+    
+    # Verificar que el estado sea 'local' para poder vender
+    if celular.estado != 'local':
+        return jsonify({'success': False, 'error': f'No se puede vender: el celular está en estado "{celular.estado}". Debe estar en estado "Local" para vender.'}), 400
     
     data = request.get_json() or {}
     
@@ -1811,6 +1884,15 @@ def reactivar_celular(id):
         return redirect(url_for('index'))
 
 
+@app.errorhandler(500)
+def internal_error(error):
+    import traceback
+    traceback.print_exc()
+    print(f"ERROR 500: {error}")
+    db.session.rollback()
+    flash(f'Error interno del servidor: {str(error)}', 'error')
+    return redirect(url_for('index'))
+
 @app.route('/', methods=['GET', 'POST'])
 @login_required
 def index():
@@ -1892,7 +1974,7 @@ def index():
     # Contar celulares en servicio técnico
     servicio_tecnico_count = Celular.query.filter_by(en_stock=True, estado='Servicio Técnico').count()
 
-    transacciones = Transaccion.query.order_by(Transaccion.fecha.desc()).limit(50).all()
+    transacciones = Transaccion.query.order_by(Transaccion.fecha.desc()).all()
     # Ganancia total: suma de montos de todas las ventas (Venta y Venta Retoma)
     ganancia = sum(t.monto for t in Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma'])).all())
     # Ganancia neta acumulada: suma de ganancia_neta de todas las transacciones de venta (incluye Venta y Venta Retoma)
@@ -2306,6 +2388,13 @@ def generar_factura(celular_id):
 @login_required
 def retoma():
     celular_id = request.form['celular_id']  # ID del celular vendido
+    
+    # Verificar que el celular esté en estado 'local' para poder hacer retoma
+    celular_check = Celular.query.get_or_404(celular_id)
+    if celular_check.estado != 'local':
+        flash(f'No se puede hacer retoma: el celular está en estado "{celular_check.estado}". Debe estar en estado "Local".', 'error')
+        return redirect(url_for('index'))
+    
     total_venta = float(request.form.get('total_venta', 0))
     cash_recibido = limpiar_pesos(request.form.get('cash_recibido', 0))
     cliente_nombre = request.form.get('cliente_nombre', 'Cliente')
@@ -2404,9 +2493,9 @@ def retoma():
             gb_val = gbs_rec_raw[cel_ptr] if cel_ptr < len(gbs_rec_raw) else None
             cel_ptr += 1
             retoma_cel = Celular(
-                imei1=imei_val,
+                imei1=imei_val or f'RETOMA-{celular_id}-{cel_ptr}',
                 modelo=modelo_val or 'N/A',
-                gb=gb_val,
+                gb=gb_val or 'N/A',
                 precio_compra=valor_item,
                 precio_cliente=valor_item * 1.2,
                 estado='local',
@@ -2436,7 +2525,7 @@ def retoma():
                 especificaciones=None,
                 serial=serial_val,
                 precio_compra=valor_item,
-                precio_venta=valor_item * 1.2,
+                precio_cliente=valor_item * 1.2,
                 estado='local',
                 cantidad=cantidad_val,
                 notas=notas_val,
@@ -2763,6 +2852,198 @@ def guardar_configuracion():
     db.session.commit()
     flash('Configuración guardada exitosamente.', 'success')
     return redirect(url_for('configuracion_empresa'))
+
+# === GESTIÓN DE DEUDAS (Quienes me deben / A quienes les debo) ===
+@app.route('/deudas')
+@login_required
+def deudas():
+    """Vista principal de gestión de deudas"""
+    tipo_filtro = request.args.get('tipo', '')  # 'me_deben' o 'yo_debo'
+    estado_filtro = request.args.get('estado', 'pendientes')  # 'pendientes', 'pagadas', 'todas'
+    buscar = request.args.get('buscar', '').strip()
+    
+    query = Deuda.query
+    
+    if tipo_filtro:
+        query = query.filter_by(tipo_deuda=tipo_filtro)
+    
+    if estado_filtro == 'pendientes':
+        query = query.filter_by(pagado=False)
+    elif estado_filtro == 'pagadas':
+        query = query.filter_by(pagado=True)
+    
+    if buscar:
+        query = query.filter(
+            db.or_(
+                Deuda.cliente_nombre.ilike(f'%{buscar}%'),
+                Deuda.concepto.ilike(f'%{buscar}%')
+            )
+        )
+    
+    deudas_list = query.order_by(Deuda.fecha_creacion.desc()).all()
+    
+    # Resúmenes
+    deudas_me_deben = Deuda.query.filter_by(tipo_deuda='me_deben', pagado=False).all()
+    deudas_yo_debo = Deuda.query.filter_by(tipo_deuda='yo_debo', pagado=False).all()
+    total_me_deben = sum(d.monto_pendiente for d in deudas_me_deben)
+    total_yo_debo = sum(d.monto_pendiente for d in deudas_yo_debo)
+    cant_me_deben = len(deudas_me_deben)
+    cant_yo_debo = len(deudas_yo_debo)
+    
+    return render_template('caja/deudas.html',
+                          deudas=deudas_list,
+                          tipo_filtro=tipo_filtro,
+                          estado_filtro=estado_filtro,
+                          buscar=buscar,
+                          total_me_deben=total_me_deben,
+                          total_yo_debo=total_yo_debo,
+                          cant_me_deben=cant_me_deben,
+                          cant_yo_debo=cant_yo_debo,
+                          user=current_user)
+
+@app.route('/deudas/crear', methods=['POST'])
+@login_required
+def crear_deuda():
+    """Crear una nueva deuda"""
+    cliente_nombre = request.form.get('cliente_nombre', '').strip()
+    monto = limpiar_pesos(request.form.get('monto', '0'))
+    tipo_deuda = request.form.get('tipo_deuda', 'me_deben')
+    concepto = request.form.get('concepto', '').strip()
+    notas = request.form.get('notas', '').strip()
+    fecha_vencida_str = request.form.get('fecha_vencida', '')
+    
+    if not cliente_nombre or not monto or monto <= 0:
+        flash('Nombre y monto son obligatorios.', 'error')
+        return redirect(url_for('deudas'))
+    
+    fecha_vencida = None
+    if fecha_vencida_str:
+        try:
+            fecha_vencida = datetime.strptime(fecha_vencida_str, '%Y-%m-%d').date()
+        except:
+            pass
+    
+    deuda = Deuda(
+        cliente_nombre=cliente_nombre,
+        monto_pendiente=monto,
+        monto_original=monto,
+        tipo_deuda=tipo_deuda,
+        concepto=concepto,
+        notas=notas,
+        fecha_vencida=fecha_vencida
+    )
+    db.session.add(deuda)
+    db.session.commit()
+    
+    tipo_txt = 'Me deben' if tipo_deuda == 'me_deben' else 'Yo debo'
+    flash(f'✅ Deuda registrada: {tipo_txt} - {cliente_nombre} por {formato_pesos(monto)}', 'success')
+    return redirect(url_for('deudas'))
+
+@app.route('/deudas/abono/<int:id>', methods=['POST'])
+@login_required
+def abonar_deuda(id):
+    """Registrar un abono o aumento a una deuda"""
+    deuda = Deuda.query.get_or_404(id)
+    monto = limpiar_pesos(request.form.get('monto', '0'))
+    tipo_movimiento = request.form.get('tipo_movimiento', 'abono')
+    descripcion = request.form.get('descripcion', '').strip()
+    
+    if not monto or monto <= 0:
+        flash('El monto debe ser mayor a 0.', 'error')
+        return redirect(url_for('deudas'))
+    
+    if tipo_movimiento == 'abono':
+        # Abono: reducir deuda
+        if monto > deuda.monto_pendiente:
+            monto = deuda.monto_pendiente  # No abonar más de lo que se debe
+        deuda.monto_pendiente -= monto
+        if deuda.monto_pendiente <= 0:
+            deuda.monto_pendiente = 0
+            deuda.pagado = True
+        
+        abono = AbonoDeuda(
+            deuda_id=deuda.id,
+            monto=monto,
+            tipo_movimiento='abono',
+            descripcion=descripcion or f'Abono de {formato_pesos(monto)}'
+        )
+        
+        # Registrar en caja como transacción
+        if deuda.tipo_deuda == 'me_deben':
+            trans = Transaccion(
+                tipo='Abono Deuda',
+                monto=monto,
+                ganancia_neta=0,
+                descripcion=f'Abono recibido de {deuda.cliente_nombre}: {descripcion or concepto_txt(deuda)}'
+            )
+            db.session.add(trans)
+        
+        flash(f'✅ Abono de {formato_pesos(monto)} registrado para {deuda.cliente_nombre}. Pendiente: {formato_pesos(deuda.monto_pendiente)}', 'success')
+    else:
+        # Aumento: incrementar deuda
+        deuda.monto_pendiente += monto
+        if deuda.pagado:
+            deuda.pagado = False
+        
+        abono = AbonoDeuda(
+            deuda_id=deuda.id,
+            monto=monto,
+            tipo_movimiento='aumento',
+            descripcion=descripcion or f'Aumento de deuda por {formato_pesos(monto)}'
+        )
+        
+        flash(f'⬆️ Deuda de {deuda.cliente_nombre} aumentada en {formato_pesos(monto)}. Total pendiente: {formato_pesos(deuda.monto_pendiente)}', 'warning')
+    
+    db.session.add(abono)
+    db.session.commit()
+    return redirect(url_for('deudas'))
+
+@app.route('/deudas/eliminar/<int:id>', methods=['POST'])
+@login_required
+def eliminar_deuda(id):
+    """Eliminar una deuda"""
+    if current_user.role != 'Admin':
+        flash('Solo el admin puede eliminar deudas.', 'error')
+        return redirect(url_for('deudas'))
+    
+    deuda = Deuda.query.get_or_404(id)
+    # Eliminar abonos relacionados primero
+    AbonoDeuda.query.filter_by(deuda_id=deuda.id).delete()
+    db.session.delete(deuda)
+    db.session.commit()
+    flash(f'🗑️ Deuda de {deuda.cliente_nombre} eliminada.', 'success')
+    return redirect(url_for('deudas'))
+
+@app.route('/deudas/detalle/<int:id>')
+@login_required
+def detalle_deuda(id):
+    """Ver detalle y historial de abonos de una deuda"""
+    deuda = Deuda.query.get_or_404(id)
+    abonos = AbonoDeuda.query.filter_by(deuda_id=deuda.id).order_by(AbonoDeuda.fecha.desc()).all()
+    return jsonify({
+        'id': deuda.id,
+        'cliente': deuda.cliente_nombre,
+        'tipo_deuda': deuda.tipo_deuda,
+        'concepto': deuda.concepto or '',
+        'monto_original': deuda.monto_original or deuda.monto_pendiente,
+        'monto_pendiente': deuda.monto_pendiente,
+        'pagado': deuda.pagado,
+        'notas': deuda.notas or '',
+        'fecha_creacion': deuda.fecha_creacion.strftime('%d/%m/%Y %H:%M') if deuda.fecha_creacion else '',
+        'fecha_vencida': deuda.fecha_vencida.strftime('%d/%m/%Y') if deuda.fecha_vencida else '',
+        'abonos': [{
+            'id': a.id,
+            'monto': a.monto,
+            'monto_fmt': formato_pesos(a.monto),
+            'tipo': a.tipo_movimiento,
+            'descripcion': a.descripcion or '',
+            'fecha': a.fecha.strftime('%d/%m/%Y %H:%M')
+        } for a in abonos]
+    })
+
+def concepto_txt(deuda):
+    """Helper para texto del concepto"""
+    return deuda.concepto if deuda.concepto else 'Sin especificar'
 
 # === FACTURA MANUAL (datos ingresados manualmente, sin base de datos) ===
 @app.route('/factura_manual')
