@@ -36,11 +36,32 @@ template_dir = os.path.join(_base_path, 'app_new', 'templates')
 static_dir = os.path.join(_base_path, 'app_new', 'static')
 
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
-app.config['SECRET_KEY'] = 'tu_clave_secreta_cambia_esto'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:root@localhost/inventario'  # ¡Cambiado a "inventario"! Cambia "tu_password"
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'tu_clave_secreta_cambia_esto')
+
+# Permite usar DATABASE_URL (producción) o variables DB_* (desarrollo/local)
+database_url = os.getenv('DATABASE_URL')
+if database_url:
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:
+    db_host = os.getenv('DB_HOST', 'localhost')
+    db_port = os.getenv('DB_PORT', '3306')
+    db_user = os.getenv('DB_USER', 'root')
+    db_password = os.getenv('DB_PASSWORD', 'root')
+    db_name = os.getenv('DB_NAME', 'inventario')
+    app.config['SQLALCHEMY_DATABASE_URI'] = (
+        f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Uploads: usar directorio static/uploads para que coincida con las URLs del template
-app.config['UPLOAD_FOLDER'] = os.path.join(static_dir, 'uploads')
+upload_folder_env = os.getenv('UPLOAD_FOLDER', '').strip()
+if upload_folder_env:
+    app.config['UPLOAD_FOLDER'] = (
+        upload_folder_env
+        if os.path.isabs(upload_folder_env)
+        else os.path.join(_base_path, upload_folder_env)
+    )
+else:
+    app.config['UPLOAD_FOLDER'] = os.path.join(static_dir, 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -3263,4 +3284,7 @@ def generar_factura_manual():
     )
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    host = os.getenv('HOST', '0.0.0.0')
+    port = int(os.getenv('PORT', '5000'))
+    debug = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+    app.run(host=host, port=port, debug=debug)
