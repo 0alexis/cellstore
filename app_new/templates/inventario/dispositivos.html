@@ -52,7 +52,7 @@
 <!-- Búsqueda y Filtros -->
 <div class="row mb-4">
     <div class="col-12">
-        <form method="GET" class="d-flex gap-2 flex-wrap">
+        <form method="GET" class="d-flex gap-2 flex-wrap mobile-stack">
             <input type="text" name="search" class="form-control" placeholder="Buscar por modelo, marca o serial" value="{{ search }}" style="flex: 1; min-width: 200px;">
             <select name="tipo" class="form-select" style="max-width: 150px;">
                 <option value="">Todos los tipos</option>
@@ -84,7 +84,7 @@
     </div>
     <div class="col-12 text-end mt-3">
         {% if user.role == 'Admin' %}
-            <button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#addModal">+ Agregar Dispositivo</button>
+            <button class="btn btn-primary btn-lg mobile-full" data-bs-toggle="modal" data-bs-target="#addModal">+ Agregar Dispositivo</button>
         {% endif %}
     </div>
 </div>
