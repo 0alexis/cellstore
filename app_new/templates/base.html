@@ -10,6 +10,15 @@
             max-width: 1800px;
         }
 
+        .navbar-brand {
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+
+        .mobile-bottom-nav {
+            display: none;
+        }
+
         .table-responsive {
             -webkit-overflow-scrolling: touch;
         }
@@ -17,6 +26,20 @@
         @media (max-width: 768px) {
             .page-wrap {
                 max-width: 100%;
+            }
+
+            .navbar {
+                padding-top: 0.45rem;
+                padding-bottom: 0.45rem;
+            }
+
+            .navbar .container-fluid {
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+            }
+
+            .navbar-brand {
+                font-size: 1rem;
             }
 
             h2 {
@@ -50,6 +73,40 @@
             .modal-dialog {
                 margin: 0.5rem;
             }
+
+            .mobile-bottom-nav {
+                display: flex;
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 1030;
+                background: #111827;
+                border-top: 1px solid rgba(255, 255, 255, 0.12);
+                padding: 0.35rem 0.35rem calc(0.35rem + env(safe-area-inset-bottom));
+                gap: 0.35rem;
+            }
+
+            .mobile-bottom-nav a {
+                flex: 1;
+                color: #e5e7eb;
+                text-decoration: none;
+                font-size: 0.72rem;
+                text-align: center;
+                border-radius: 0.5rem;
+                padding: 0.45rem 0.25rem;
+                line-height: 1.15;
+            }
+
+            .mobile-bottom-nav a.active,
+            .mobile-bottom-nav a:active {
+                background: rgba(59, 130, 246, 0.22);
+                color: #ffffff;
+            }
+
+            body {
+                padding-bottom: 4.1rem;
+            }
         }
     </style>
 </head>
@@ -58,6 +115,7 @@
         <div class="container-fluid px-4">
 
             {% if current_user.is_authenticated %}
+                <a class="navbar-brand" href="{{ url_for('index') }}">CellStore</a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
@@ -122,6 +180,14 @@
             {% block page_content %}{% endblock %}
         </div>
     </div>
+    {% if current_user.is_authenticated %}
+    <nav class="mobile-bottom-nav" aria-label="Navegacion movil">
+        <a href="{{ url_for('stock') }}" class="{% if request.endpoint == 'stock' %}active{% endif %}">Stock</a>
+        <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Celulares</a>
+        <a href="{{ url_for('dispositivos') }}" class="{% if request.endpoint == 'dispositivos' %}active{% endif %}">Dispositivos</a>
+        <a href="{{ url_for('caja') }}" class="{% if request.endpoint == 'caja' %}active{% endif %}">Caja</a>
+    </nav>
+    {% endif %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
