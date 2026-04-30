@@ -52,6 +52,16 @@ else:
         f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Configuración del pool de conexiones para mejor rendimiento
+app.config['SQLALCHEMY_POOL_SIZE'] = 10  # Número de conexiones en el pool
+app.config['SQLALCHEMY_POOL_TIMEOUT'] = 20  # Timeout para obtener conexión (segundos)
+app.config['SQLALCHEMY_POOL_RECYCLE'] = 300  # Reciclar conexiones cada 5 minutos
+app.config['SQLALCHEMY_MAX_OVERFLOW'] = 5  # Conexiones adicionales si el pool está lleno
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,  # Verificar conexión antes de usar
+}
+
 # Uploads: usar directorio static/uploads para que coincida con las URLs del template
 upload_folder_env = os.getenv('UPLOAD_FOLDER', '').strip()
 if upload_folder_env:
@@ -259,18 +269,18 @@ class Tercero(db.Model):
 
 class Celular(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    imei1 = db.Column(db.String(20), unique=True, nullable=False)
-    imei2 = db.Column(db.String(20), nullable=True)
-    modelo = db.Column(db.String(50), nullable=False)
+    imei1 = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    imei2 = db.Column(db.String(20), nullable=True, index=True)
+    modelo = db.Column(db.String(50), nullable=False, index=True)
     color = db.Column(db.String(30), nullable=True)
     gb = db.Column(db.String(10), nullable=False)
     precio_compra = db.Column(db.Float, default=0.0)
     precio_cliente = db.Column(db.Float, default=0.0)
     precio_patinado = db.Column(db.Float, default=0.0)
-    estado = db.Column(db.String(20), default='Patinado')
+    estado = db.Column(db.String(20), default='Patinado', index=True)
     notas = db.Column(db.Text)
-    en_stock = db.Column(db.Boolean, default=True)
-    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
+    en_stock = db.Column(db.Boolean, default=True, index=True)
+    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota, index=True)
     tercero_id = db.Column(db.Integer, db.ForeignKey('tercero.id'), nullable=True)
     patinado_en = db.Column(db.DateTime, nullable=True)
     veces_ingresado = db.Column(db.Integer, default=1)  # Cuántas veces ha entrado al inventario
@@ -291,13 +301,13 @@ class CelularForm(FlaskForm):
 
 class Transaccion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    tipo = db.Column(db.String(20), nullable=False)
+    tipo = db.Column(db.String(20), nullable=False, index=True)
     monto = db.Column(db.Float, nullable=False)
     ganancia_neta = db.Column(db.Float, default=0.0)
     cash_recibido_retoma = db.Column(db.Float, default=0.0)
     descripcion = db.Column(db.Text)
-    fecha = db.Column(db.DateTime, default=obtener_fecha_bogota)
-    anulada = db.Column(db.Boolean, default=False)
+    fecha = db.Column(db.DateTime, default=obtener_fecha_bogota, index=True)
+    anulada = db.Column(db.Boolean, default=False, index=True)
     motivo_anulacion = db.Column(db.Text)
     ultimo_editor = db.Column(db.String(50))
     editado_en = db.Column(db.DateTime)
@@ -306,20 +316,20 @@ class Transaccion(db.Model):
 # Modelo Dispositivo (para PC, Tablets, iPad, Cámaras, etc.)
 class Dispositivo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    tipo = db.Column(db.String(50), nullable=False)  # PC, Tablet, iPad, Cámara, etc.
-    marca = db.Column(db.String(50), nullable=False)
-    modelo = db.Column(db.String(100), nullable=False)
+    tipo = db.Column(db.String(50), nullable=False, index=True)  # PC, Tablet, iPad, Cámara, etc.
+    marca = db.Column(db.String(50), nullable=False, index=True)
+    modelo = db.Column(db.String(100), nullable=False, index=True)
     color = db.Column(db.String(30), nullable=True)  # Color del dispositivo
     especificaciones = db.Column(db.Text)  # RAM, Almacenamiento, Procesador, etc.
-    serial = db.Column(db.String(100), nullable=True)
+    serial = db.Column(db.String(100), nullable=True, index=True)
     precio_compra = db.Column(db.Float, default=0.0)
     precio_cliente = db.Column(db.Float, default=0.0)
     precio_patinado = db.Column(db.Float, default=0.0)
-    estado = db.Column(db.String(20), default='local')  # local, Patinado, Vendido, Servicio Técnico
+    estado = db.Column(db.String(20), default='local', index=True)  # local, Patinado, Vendido, Servicio Técnico
     cantidad = db.Column(db.Integer, default=1)
     notas = db.Column(db.Text)
-    en_stock = db.Column(db.Boolean, default=True)
-    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
+    en_stock = db.Column(db.Boolean, default=True, index=True)
+    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota, index=True)
     tercero_id = db.Column(db.Integer, db.ForeignKey('tercero.id'), nullable=True)
     patinado_en = db.Column(db.DateTime, nullable=True)  # Fecha en que se patinó
     veces_ingresado = db.Column(db.Integer, default=1)  # Cuántas veces ha entrado al inventario
@@ -610,29 +620,38 @@ def caja():
     
     transacciones = query.all()
     
-    # Cálculos agregados
+    # Cálculos agregados de las transacciones filtradas (usando Python ya que ya tenemos los datos)
     total_monto = sum(t.monto for t in transacciones)
     total_ganancia_neta = sum((t.ganancia_neta or 0) for t in transacciones)
     cantidad_transacciones = len(transacciones)
     
-    # Estadísticas globales (como en index)
-    celulares_en_stock = Celular.query.filter_by(en_stock=True).all()
-    cantidad_celulares = len(celulares_en_stock)
-    inversion_celulares = sum((c.precio_compra or 0) for c in celulares_en_stock)
+    # Estadísticas globales usando agregaciones SQL (más eficiente)
+    stats_celulares = db.session.query(
+        db.func.count(Celular.id),
+        db.func.coalesce(db.func.sum(Celular.precio_compra), 0)
+    ).filter(Celular.en_stock == True).first()
+    cantidad_celulares = stats_celulares[0] or 0
+    inversion_celulares = float(stats_celulares[1] or 0)
     
-    # Dispositivos en stock
-    dispositivos_en_stock = Dispositivo.query.filter_by(en_stock=True).all()
-    cantidad_dispositivos = len(dispositivos_en_stock)
-    inversion_dispositivos = sum((d.precio_compra * d.cantidad or 0) for d in dispositivos_en_stock)
+    # Dispositivos en stock con agregación SQL
+    stats_dispositivos = db.session.query(
+        db.func.count(Dispositivo.id),
+        db.func.coalesce(db.func.sum(Dispositivo.precio_compra * Dispositivo.cantidad), 0)
+    ).filter(Dispositivo.en_stock == True).first()
+    cantidad_dispositivos = stats_dispositivos[0] or 0
+    inversion_dispositivos = float(stats_dispositivos[1] or 0)
     
     # Inversión total (celulares + dispositivos)
     inversion_total = inversion_celulares + inversion_dispositivos
     
-    # Ganancia total: suma de montos de todas las ventas (Venta, Venta Retoma, Venta Dispositivo)
-    ganancia = sum(t.monto for t in Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma', 'Venta Dispositivo'])).all())
-    # Ganancia neta acumulada: suma de ganancia_neta de todas las transacciones de venta
-    ventas_todas = Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma', 'Venta Dispositivo'])).all()
-    ganancia_neta_total_acumulada = sum((t.ganancia_neta or 0) for t in ventas_todas)
+    # Ganancias usando agregación SQL (una sola consulta)
+    tipos_venta = ['Venta', 'Venta Retoma', 'Venta Dispositivo']
+    stats_ventas = db.session.query(
+        db.func.coalesce(db.func.sum(Transaccion.monto), 0),
+        db.func.coalesce(db.func.sum(Transaccion.ganancia_neta), 0)
+    ).filter(Transaccion.tipo.in_(tipos_venta)).first()
+    ganancia = float(stats_ventas[0] or 0)
+    ganancia_neta_total_acumulada = float(stats_ventas[1] or 0)
     
     return render_template('caja/caja.html', transacciones=transacciones, tipo_filtro=tipo_filtro, 
                           fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, buscar_imei=buscar_imei,
@@ -1996,11 +2015,16 @@ def index():
     servicio_tecnico_count = Celular.query.filter_by(en_stock=True, estado='Servicio Técnico').count()
 
     transacciones = Transaccion.query.order_by(Transaccion.fecha.desc()).all()
-    # Ganancia total: suma de montos de todas las ventas (Venta y Venta Retoma)
-    ganancia = sum(t.monto for t in Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma'])).all())
-    # Ganancia neta acumulada: suma de ganancia_neta de todas las transacciones de venta (incluye Venta y Venta Retoma)
-    ventas_todas = Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma'])).all()
-    ganancia_neta_total = sum((t.ganancia_neta or 0) for t in ventas_todas)
+    
+    # Ganancias usando agregación SQL (una sola consulta en lugar de dos)
+    tipos_venta = ['Venta', 'Venta Retoma']
+    stats_ventas = db.session.query(
+        db.func.coalesce(db.func.sum(Transaccion.monto), 0),
+        db.func.coalesce(db.func.sum(Transaccion.ganancia_neta), 0)
+    ).filter(Transaccion.tipo.in_(tipos_venta)).first()
+    ganancia = float(stats_ventas[0] or 0)
+    ganancia_neta_total = float(stats_ventas[1] or 0)
+    
     # Inversión total: suma de precio_compra de todos los celulares en stock
     inversion_total = sum((c.precio_compra or 0) for c in celulares)
     return render_template('caja/index.html', form=form, celulares=celulares, terceros=terceros, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, estado_filtro=estado_filtro, orden=orden, servicio_tecnico_count=servicio_tecnico_count, user=current_user)
@@ -2828,6 +2852,111 @@ def configuracion_empresa():
         return redirect(url_for('index'))
     config = ConfiguracionEmpresa.query.first()
     return render_template('configuracion/configuracion.html', user=current_user, config=config)
+
+
+def _serializar_valor_db(valor):
+    if valor is None or isinstance(valor, (str, int, float, bool)):
+        return valor
+    if isinstance(valor, bytes):
+        return f'<{len(valor)} bytes>'
+    if hasattr(valor, 'isoformat'):
+        try:
+            return valor.isoformat()
+        except TypeError:
+            pass
+    return str(valor)
+
+
+@app.route('/api/admin/database_browser')
+@login_required
+def api_database_browser():
+    if current_user.role != 'Admin':
+        return jsonify({'success': False, 'error': 'Acceso denegado'}), 403
+
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    tables = sorted(inspector.get_table_names())
+    requested_table = (request.args.get('table') or '').strip()
+    selected_table = requested_table or (tables[0] if tables else '')
+
+    if selected_table and selected_table not in tables:
+        return jsonify({'success': False, 'error': 'Tabla no encontrada'}), 404
+
+    page = max(request.args.get('page', 1, type=int) or 1, 1)
+    limit = request.args.get('limit', 25, type=int) or 25
+    limit = min(max(limit, 10), 100)
+
+    response = {
+        'success': True,
+        'tables': [{'name': table_name} for table_name in tables],
+        'selected_table': selected_table,
+        'columns': [],
+        'rows': [],
+        'pagination': {
+            'page': page,
+            'limit': limit,
+            'total_rows': 0,
+            'total_pages': 0,
+            'has_prev': False,
+            'has_next': False,
+        },
+    }
+
+    if not selected_table:
+        return jsonify(response)
+
+    columns = inspector.get_columns(selected_table)
+    column_names = [column['name'] for column in columns]
+    primary_keys = inspector.get_pk_constraint(selected_table).get('constrained_columns') or []
+    order_column = 'id' if 'id' in column_names else (primary_keys[0] if primary_keys else None)
+
+    response['columns'] = [
+        {
+            'name': column['name'],
+            'type': str(column['type']),
+            'nullable': column.get('nullable', True),
+        }
+        for column in columns
+    ]
+
+    safe_table_name = selected_table.replace('`', '')
+    order_clause = f" ORDER BY `{order_column}` DESC" if order_column else ''
+
+    with db.engine.connect() as conn:
+        total_rows = conn.execute(
+            text(f"SELECT COUNT(*) FROM `{safe_table_name}`")
+        ).scalar() or 0
+        total_pages = (total_rows + limit - 1) // limit if total_rows else 0
+
+        if total_pages and page > total_pages:
+            page = total_pages
+
+        offset = (page - 1) * limit if total_rows else 0
+        result = conn.execute(
+            text(
+                f"SELECT * FROM `{safe_table_name}`{order_clause} LIMIT :limit OFFSET :offset"
+            ),
+            {'limit': limit, 'offset': offset},
+        )
+
+        rows = []
+        for row in result:
+            rows.append({
+                key: _serializar_valor_db(value)
+                for key, value in row._mapping.items()
+            })
+
+    response['rows'] = rows
+    response['pagination'] = {
+        'page': page,
+        'limit': limit,
+        'total_rows': total_rows,
+        'total_pages': total_pages,
+        'has_prev': page > 1,
+        'has_next': total_pages > 0 and page < total_pages,
+    }
+    return jsonify(response)
 
 @app.route('/guardar_configuracion', methods=['POST'])
 @login_required

@@ -22,6 +22,11 @@
                     <small>Estos datos aparecerán en las facturas generadas</small>
                 </div>
                 <div class="card-body">
+                    <div class="d-flex justify-content-end mb-3">
+                        <button type="button" class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#databaseBrowserModal">
+                            Ver tablas y datos
+                        </button>
+                    </div>
                     <form method="POST" action="{{ url_for('guardar_configuracion') }}" enctype="multipart/form-data">
                         <!-- Logo -->
                         <h5 class="border-bottom pb-2 mb-3">🖼️ Logo de la Empresa</h5>
@@ -122,7 +127,258 @@
     </div>
 </div>
 
+<div class="modal fade" id="databaseBrowserModal" tabindex="-1" aria-labelledby="databaseBrowserModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="databaseBrowserModalLabel">Visor de Base de Datos</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-lg-3">
+                        <div class="border rounded h-100">
+                            <div class="p-3 border-bottom bg-light d-flex justify-content-between align-items-center">
+                                <strong>Tablas</strong>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="db-refresh-btn">Actualizar</button>
+                            </div>
+                            <div class="list-group list-group-flush" id="db-table-list">
+                                <div class="list-group-item text-muted">Cargando tablas...</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-9">
+                        <div class="border rounded">
+                            <div class="p-3 border-bottom bg-light d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                                <div>
+                                    <strong id="db-table-title">Selecciona una tabla</strong>
+                                    <div class="small text-muted" id="db-table-meta">Sin datos cargados</div>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <label for="db-limit-select" class="form-label mb-0 small text-muted">Filas</label>
+                                    <select class="form-select form-select-sm" id="db-limit-select" style="width: auto;">
+                                        <option value="10">10</option>
+                                        <option value="25" selected>25</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="p-3" id="db-browser-feedback"></div>
+                            <div class="table-responsive px-3 pb-3">
+                                <table class="table table-sm table-striped table-hover align-middle mb-0" id="db-data-table">
+                                    <thead></thead>
+                                    <tbody>
+                                        <tr>
+                                            <td class="text-muted">Abre el modal para consultar la base de datos.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="px-3 pb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <div class="small text-muted" id="db-pagination-summary">Sin resultados</div>
+                                <div class="btn-group" role="group" aria-label="Paginacion base de datos">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="db-prev-btn" disabled>Anterior</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="db-next-btn" disabled>Siguiente</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+    const dbModalEl = document.getElementById('databaseBrowserModal');
+    const dbTableList = document.getElementById('db-table-list');
+    const dbTableTitle = document.getElementById('db-table-title');
+    const dbTableMeta = document.getElementById('db-table-meta');
+    const dbFeedback = document.getElementById('db-browser-feedback');
+    const dbDataTableHead = document.querySelector('#db-data-table thead');
+    const dbDataTableBody = document.querySelector('#db-data-table tbody');
+    const dbPrevBtn = document.getElementById('db-prev-btn');
+    const dbNextBtn = document.getElementById('db-next-btn');
+    const dbRefreshBtn = document.getElementById('db-refresh-btn');
+    const dbLimitSelect = document.getElementById('db-limit-select');
+    const dbPaginationSummary = document.getElementById('db-pagination-summary');
+
+    let dbBrowserState = {
+        table: '',
+        page: 1,
+        limit: Number(dbLimitSelect.value),
+        loadedOnce: false,
+    };
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderDbFeedback(message, type) {
+        if (!message) {
+            dbFeedback.innerHTML = '';
+            return;
+        }
+        dbFeedback.innerHTML = `<div class="alert alert-${type} py-2 mb-3">${escapeHtml(message)}</div>`;
+    }
+
+    function renderDbTableList(tables, selectedTable) {
+        if (!tables.length) {
+            dbTableList.innerHTML = '<div class="list-group-item text-muted">No hay tablas disponibles.</div>';
+            return;
+        }
+
+        dbTableList.innerHTML = tables.map((table) => {
+            const activeClass = table.name === selectedTable ? ' active' : '';
+            return `
+                <button type="button" class="list-group-item list-group-item-action${activeClass}" data-db-table="${escapeHtml(table.name)}">
+                    ${escapeHtml(table.name)}
+                </button>
+            `;
+        }).join('');
+    }
+
+    function renderDbData(columns, rows) {
+        if (!columns.length) {
+            dbDataTableHead.innerHTML = '';
+            dbDataTableBody.innerHTML = '<tr><td class="text-muted">No hay columnas para mostrar.</td></tr>';
+            return;
+        }
+
+        dbDataTableHead.innerHTML = `
+            <tr>
+                ${columns.map((column) => `<th>${escapeHtml(column.name)}</th>`).join('')}
+            </tr>
+        `;
+
+        if (!rows.length) {
+            dbDataTableBody.innerHTML = `<tr><td colspan="${columns.length}" class="text-center text-muted py-4">La tabla no tiene registros.</td></tr>`;
+            return;
+        }
+
+        dbDataTableBody.innerHTML = rows.map((row) => `
+            <tr>
+                ${columns.map((column) => {
+                    const value = row[column.name];
+                    const content = value === null || value === undefined || value === ''
+                        ? '<span class="text-muted">NULL</span>'
+                        : escapeHtml(value);
+                    return `<td class="small" style="white-space: nowrap;">${content}</td>`;
+                }).join('')}
+            </tr>
+        `).join('');
+    }
+
+    function setDbLoadingState() {
+        renderDbFeedback('', 'info');
+        dbTableMeta.textContent = 'Consultando estructura y registros...';
+        dbDataTableHead.innerHTML = '';
+        dbDataTableBody.innerHTML = '<tr><td class="text-muted">Cargando datos...</td></tr>';
+        dbPrevBtn.disabled = true;
+        dbNextBtn.disabled = true;
+    }
+
+    async function loadDatabaseBrowser(options = {}) {
+        const nextTable = options.table !== undefined ? options.table : dbBrowserState.table;
+        const nextPage = options.page !== undefined ? options.page : dbBrowserState.page;
+        const nextLimit = options.limit !== undefined ? Number(options.limit) : dbBrowserState.limit;
+
+        dbBrowserState.table = nextTable;
+        dbBrowserState.page = nextPage;
+        dbBrowserState.limit = nextLimit;
+        dbLimitSelect.value = String(nextLimit);
+        setDbLoadingState();
+
+        const params = new URLSearchParams({
+            page: String(nextPage),
+            limit: String(nextLimit),
+        });
+        if (nextTable) {
+            params.set('table', nextTable);
+        }
+
+        try {
+            const response = await fetch(`{{ url_for('api_database_browser') }}?${params.toString()}`, {
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'No fue posible consultar la base de datos.');
+            }
+
+            dbBrowserState.loadedOnce = true;
+            dbBrowserState.table = data.selected_table || '';
+            dbBrowserState.page = data.pagination.page;
+
+            renderDbTableList(data.tables || [], data.selected_table);
+            renderDbData(data.columns || [], data.rows || []);
+
+            if (data.selected_table) {
+                dbTableTitle.textContent = data.selected_table;
+                dbTableMeta.textContent = `${(data.columns || []).length} columnas`; 
+            } else {
+                dbTableTitle.textContent = 'Sin tablas disponibles';
+                dbTableMeta.textContent = 'La base de datos no tiene tablas visibles';
+            }
+
+            const totalRows = data.pagination.total_rows || 0;
+            const totalPages = data.pagination.total_pages || 0;
+            dbPaginationSummary.textContent = totalRows
+                ? `Pagina ${data.pagination.page} de ${totalPages} | ${totalRows} registros`
+                : 'Sin resultados';
+
+            dbPrevBtn.disabled = !data.pagination.has_prev;
+            dbNextBtn.disabled = !data.pagination.has_next;
+            renderDbFeedback('', 'info');
+        } catch (error) {
+            renderDbFeedback(error.message, 'danger');
+            dbTableTitle.textContent = 'Error al cargar';
+            dbTableMeta.textContent = 'Revisa la conexión o vuelve a intentar';
+            dbPaginationSummary.textContent = 'Sin resultados';
+            dbDataTableHead.innerHTML = '';
+            dbDataTableBody.innerHTML = '<tr><td class="text-danger">No se pudieron cargar los datos.</td></tr>';
+        }
+    }
+
+    dbModalEl.addEventListener('shown.bs.modal', function() {
+        if (!dbBrowserState.loadedOnce) {
+            loadDatabaseBrowser({ page: 1, limit: dbBrowserState.limit });
+        }
+    });
+
+    dbTableList.addEventListener('click', function(event) {
+        const button = event.target.closest('[data-db-table]');
+        if (!button) {
+            return;
+        }
+        loadDatabaseBrowser({ table: button.dataset.dbTable, page: 1, limit: dbBrowserState.limit });
+    });
+
+    dbPrevBtn.addEventListener('click', function() {
+        if (dbBrowserState.page > 1) {
+            loadDatabaseBrowser({ table: dbBrowserState.table, page: dbBrowserState.page - 1, limit: dbBrowserState.limit });
+        }
+    });
+
+    dbNextBtn.addEventListener('click', function() {
+        loadDatabaseBrowser({ table: dbBrowserState.table, page: dbBrowserState.page + 1, limit: dbBrowserState.limit });
+    });
+
+    dbRefreshBtn.addEventListener('click', function() {
+        loadDatabaseBrowser({ table: dbBrowserState.table, page: dbBrowserState.page, limit: dbBrowserState.limit });
+    });
+
+    dbLimitSelect.addEventListener('change', function() {
+        loadDatabaseBrowser({ table: dbBrowserState.table, page: 1, limit: Number(this.value) });
+    });
+
     // Actualizar vista previa en tiempo real
     document.querySelector('input[name="nombre"]').addEventListener('input', function() {
         document.getElementById('preview-nombre').textContent = this.value || 'CELLSTORE';
