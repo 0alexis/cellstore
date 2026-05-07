@@ -446,9 +446,9 @@ function formatearPesos(valor) {
                             </select>
                             <select class="form-select form-select-sm mt-1 tercero-selector" name="tercero_id" {% if cel.estado != 'Patinado' %}style="display:none"{% endif %}>
                                 <option value="">Selecciona tercero</option>
-                                {% for t in terceros %}
-                                    <option value="{{ t.id }}" {% if cel.tercero_id == t.id %}selected{% endif %}>{{ t.local }} - {{ t.nombre }}</option>
-                                {% endfor %}
+                                {% if cel.tercero_id and cel.tercero %}
+                                    <option value="{{ cel.tercero_id }}" selected>{{ cel.tercero.local }} - {{ cel.tercero.nombre }}</option>
+                                {% endif %}
                             </select>
                         </form>
                         {% else %}
@@ -1241,12 +1241,37 @@ function formatearPesos(valor) {
         }
     });
 
+    const tercerosCatalogo = {{ terceros_catalogo|tojson }};
+
+    function ensureTerceroOptions(selectEl) {
+        if (!selectEl || selectEl.dataset.loaded === '1') return;
+
+        const selectedValue = selectEl.value;
+        const existingValues = new Set(Array.from(selectEl.options).map(o => o.value));
+
+        tercerosCatalogo.forEach(t => {
+            const idTxt = String(t.id);
+            if (existingValues.has(idTxt)) return;
+            const opt = document.createElement('option');
+            opt.value = idTxt;
+            opt.textContent = t.label;
+            selectEl.appendChild(opt);
+        });
+
+        if (selectedValue) {
+            selectEl.value = selectedValue;
+        }
+
+        selectEl.dataset.loaded = '1';
+    }
+
     // Manejo de estado -> requiere tercero cuando es patinado
     function toggleTerceroSelect(selectEl) {
         const form = selectEl.closest('form');
         const terceroSelect = form ? form.querySelector('.tercero-selector') : null;
         if (!terceroSelect) return;
         if (selectEl.value === 'Patinado') {
+            ensureTerceroOptions(terceroSelect);
             terceroSelect.style.display = 'block';
         } else {
             terceroSelect.value = '';
@@ -1268,6 +1293,9 @@ function formatearPesos(valor) {
     }
 
     document.querySelectorAll('.tercero-selector').forEach(sel => {
+        sel.addEventListener('focus', function () {
+            ensureTerceroOptions(this);
+        });
         sel.addEventListener('change', function () {
             const estadoSelect = this.closest('form').querySelector('.estado-select');
             if (estadoSelect && estadoSelect.value === 'Patinado' && this.value) {

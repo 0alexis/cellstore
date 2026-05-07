@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 from flask_wtf import FlaskForm
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from wtforms import StringField, FloatField, SelectField, TextAreaField, SubmitField, PasswordField, BooleanField
@@ -2274,12 +2275,24 @@ def index():
     else:
         query = query.order_by(Celular.id.desc())
     
-    # Paginación: 50 registros por página para evitar cargar miles a la vez
+    # Evita N+1 al renderizar cel.tercero en la tabla
+    query = query.options(joinedload(Celular.tercero))
+
+    # Paginación: menos registros por página para acelerar primer render
     page = request.args.get('page', 1, type=int)
-    per_page = 50
+    per_page = 20
     celulares = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.local, Tercero.nombre).all()
+    terceros_catalogo = [
+        {
+            'id': t.id,
+            'label': f"{t.local} - {t.nombre}"
+        }
+        for t in Tercero.query.with_entities(Tercero.id, Tercero.local, Tercero.nombre)
+        .filter_by(activo=True)
+        .order_by(Tercero.local, Tercero.nombre)
+        .all()
+    ]
 
     # Contar celulares en servicio técnico
     servicio_tecnico_count = Celular.query.filter_by(en_stock=True, estado='Servicio Técnico').count()
@@ -2296,7 +2309,7 @@ def index():
         'caja/index.html',
         form=form,
         celulares=celulares,
-        terceros=terceros,
+        terceros_catalogo=terceros_catalogo,
         inversion_total=inversion_total,
         total_stock=total_stock,
         search=search,
