@@ -8,6 +8,7 @@
             <li class="nav-item"><a class="nav-link" href="{{ url_for('dispositivos') }}">Dispositivos</a></li>
             <li class="nav-item"><a class="nav-link" href="{{ url_for('caja') }}">Caja</a></li>
             <li class="nav-item"><a class="nav-link active" href="{{ url_for('configuracion_empresa') }}">⚙️ Configuración</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard_base_datos') }}">🗄️ Dashboard BD</a></li>
         </ul>
         <span class="navbar-text">Rol: {{ user.role }} | Usuario: {{ user.username }}</span>
     </div>
@@ -115,7 +116,10 @@
                         
                         <!-- Botones -->
                         <div class="d-flex justify-content-between mt-4">
-                            <a href="{{ url_for('index') }}" class="btn btn-secondary">← Volver</a>
+                            <div class="d-flex gap-2">
+                                <a href="{{ url_for('index') }}" class="btn btn-secondary">← Volver</a>
+                                <a href="{{ url_for('dashboard_base_datos') }}" class="btn btn-dark">🗄️ Ver Dashboard BD</a>
+                            </div>
                             <button type="submit" class="btn btn-primary btn-lg">
                                 💾 Guardar Configuración
                             </button>

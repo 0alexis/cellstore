@@ -37,7 +37,7 @@ load_dotenv(env_file)
 # TODO: Migrar a factory pattern con app_new/__init__.py
 from app import app
 
-def main():
+def     main():
     """Función principal para ejecutar la aplicación"""
     
     # Obtener configuración desde .env

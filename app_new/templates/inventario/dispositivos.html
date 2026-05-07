@@ -909,8 +909,13 @@
         document.getElementById('reactivar_estado').value = 'Patinado';
         document.getElementById('reactivar_notas').value = 'Reingreso - ' + (data.notas || '');
 
-        const infoText = `Tipo: ${data.tipo} | Serial: ${data.serial || 'N/A'} | Ingresos anteriores: ${data.veces_ingresado}`;
-        document.getElementById('reactivarDispositivoInfo').textContent = infoText;
+        const notasPrevias = (data.notas || '').trim();
+        const infoHtml = `
+            <div>Tipo: <strong>${data.tipo || ''}</strong> | Serial: <strong>${data.serial || 'N/A'}</strong> | Ingresos anteriores: <strong>${data.veces_ingresado}</strong></div>
+            <div class="mt-2"><strong>Notas anteriores:</strong></div>
+            <div class="small bg-light border rounded p-2" style="white-space: pre-line;">${notasPrevias || 'Sin notas registradas.'}</div>
+        `;
+        document.getElementById('reactivarDispositivoInfo').innerHTML = infoHtml;
 
         document.getElementById('reactivarDispositivoForm').action = `/reactivar_dispositivo/${data.id}`;
 

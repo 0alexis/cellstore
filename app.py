@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, Response
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
 from flask_wtf import FlaskForm
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from wtforms import StringField, FloatField, SelectField, TextAreaField, SubmitField, PasswordField, BooleanField
@@ -9,7 +10,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import pytz
 import os
-from io import BytesIO
+import re
+from io import BytesIO, StringIO
+import csv
+import time
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.units import inch
@@ -52,16 +56,6 @@ else:
         f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Configuración del pool de conexiones para mejor rendimiento
-app.config['SQLALCHEMY_POOL_SIZE'] = 10  # Número de conexiones en el pool
-app.config['SQLALCHEMY_POOL_TIMEOUT'] = 20  # Timeout para obtener conexión (segundos)
-app.config['SQLALCHEMY_POOL_RECYCLE'] = 300  # Reciclar conexiones cada 5 minutos
-app.config['SQLALCHEMY_MAX_OVERFLOW'] = 5  # Conexiones adicionales si el pool está lleno
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,  # Verificar conexión antes de usar
-}
-
 # Uploads: usar directorio static/uploads para que coincida con las URLs del template
 upload_folder_env = os.getenv('UPLOAD_FOLDER', '').strip()
 if upload_folder_env:
@@ -87,6 +81,76 @@ import pymysql
 pymysql.install_as_MySQLdb()
 
 db = SQLAlchemy(app)
+
+# Cache simple en memoria para acelerar resumen del dashboard de BD.
+_db_dashboard_cache = {
+    'expires_at': 0.0,
+    'table_names': [],
+    'resumen_tablas': []
+}
+
+
+def _dashboard_cache_ttl_seconds():
+    try:
+        ttl = int(os.getenv('DB_DASHBOARD_CACHE_TTL', 20))
+    except (TypeError, ValueError):
+        ttl = 20
+    return max(5, min(ttl, 300))
+
+
+def _get_dashboard_tables_cached(inspector, conn, quote, refresh=False):
+    now = time.time()
+    if (
+        not refresh
+        and _db_dashboard_cache['table_names']
+        and now < _db_dashboard_cache['expires_at']
+    ):
+        return _db_dashboard_cache['table_names'], _db_dashboard_cache['resumen_tablas']
+
+    table_names = sorted(inspector.get_table_names())
+    resumen_tablas = []
+    to_int = lambda value: int(value or 0)
+
+    for table_name in table_names:
+        quoted_table = quote(table_name)
+        total = conn.execute(text(f'SELECT COUNT(*) AS total FROM {quoted_table}')).scalar()
+
+        cols_info = inspector.get_columns(table_name)
+        columnas_nombre = [col['name'] for col in cols_info]
+        estado_col = next(
+            (name for name in ['activo', 'en_stock'] if name in columnas_nombre),
+            None
+        )
+
+        activos = None
+        inactivos = None
+        if estado_col:
+            quoted_estado = quote(estado_col)
+            activos = conn.execute(
+                text(
+                    f'SELECT COUNT(*) FROM {quoted_table} '
+                    f'WHERE {quoted_estado} = 1'
+                )
+            ).scalar()
+            inactivos = conn.execute(
+                text(
+                    f'SELECT COUNT(*) FROM {quoted_table} '
+                    f'WHERE {quoted_estado} = 0'
+                )
+            ).scalar()
+
+        resumen_tablas.append({
+            'name': table_name,
+            'total': to_int(total),
+            'estado_col': estado_col,
+            'activos': to_int(activos) if activos is not None else None,
+            'inactivos': to_int(inactivos) if inactivos is not None else None
+        })
+
+    _db_dashboard_cache['table_names'] = table_names
+    _db_dashboard_cache['resumen_tablas'] = resumen_tablas
+    _db_dashboard_cache['expires_at'] = now + _dashboard_cache_ttl_seconds()
+    return table_names, resumen_tablas
 
 # Zona horaria de Bogotá, Colombia
 bogota_tz = pytz.timezone('America/Bogota')
@@ -165,16 +229,65 @@ def limpiar_pesos(valor):
     """Limpia un valor con formato de pesos: '$1.234.567' o '1.234.567,89' -> 1234567.89"""
     if not valor:
         return 0.0
-    # Remover signos de peso y espacios
-    valor_limpio = str(valor).replace('$', '').replace(' ', '')
-    # Remover puntos (separadores de miles)
-    valor_limpio = valor_limpio.replace('.', '')
-    # Reemplazar coma por punto (decimales)
-    valor_limpio = valor_limpio.replace(',', '.')
+    valor_limpio = str(valor).strip().replace('$', '').replace(' ', '').replace('\xa0', '')
+    valor_limpio = re.sub(r'[^\d,\.]', '', valor_limpio)
+    if not valor_limpio:
+        return 0.0
+
+    # Soporta formatos mixtos: 1.234.567,89 | 1,234,567.89 | 2.000.000.0
+    if ',' in valor_limpio and '.' in valor_limpio:
+        last_comma = valor_limpio.rfind(',')
+        last_dot = valor_limpio.rfind('.')
+        decimal_sep = ',' if last_comma > last_dot else '.'
+        thousands_sep = '.' if decimal_sep == ',' else ','
+        valor_limpio = valor_limpio.replace(thousands_sep, '')
+        if decimal_sep == ',':
+            valor_limpio = valor_limpio.replace(',', '.')
+        elif valor_limpio.count('.') > 1:
+            partes = valor_limpio.split('.')
+            valor_limpio = ''.join(partes[:-1]) + '.' + partes[-1]
+    elif ',' in valor_limpio:
+        if valor_limpio.count(',') > 1:
+            valor_limpio = valor_limpio.replace(',', '')
+        else:
+            izquierda, derecha = valor_limpio.split(',')
+            if len(derecha) == 3:
+                valor_limpio = izquierda + derecha
+            else:
+                valor_limpio = izquierda + '.' + derecha
+    elif '.' in valor_limpio:
+        if valor_limpio.count('.') > 1:
+            partes = valor_limpio.split('.')
+            if len(partes[-1]) in (1, 2):
+                valor_limpio = ''.join(partes[:-1]) + '.' + partes[-1]
+            else:
+                valor_limpio = ''.join(partes)
+        else:
+            izquierda, derecha = valor_limpio.split('.')
+            if len(derecha) == 3:
+                valor_limpio = izquierda + derecha
+
     try:
         return float(valor_limpio)
     except ValueError:
         return 0.0
+
+
+def construir_historial_notas(nota_anterior, nota_nueva, etiqueta=''):
+    """Conserva historial de notas anexando nuevos cambios con marca de tiempo."""
+    anterior = (nota_anterior or '').strip()
+    nueva = (nota_nueva or '').strip()
+
+    if not nueva:
+        return anterior
+    if not anterior:
+        return nueva
+    if nueva == anterior:
+        return anterior
+
+    fecha_txt = obtener_fecha_bogota().strftime('%d/%m/%Y %H:%M')
+    prefijo = f'[{fecha_txt}] {etiqueta}: ' if etiqueta else f'[{fecha_txt}] '
+    return f"{anterior}\n{prefijo}{nueva}"
 
 # Login Manager
 login_manager = LoginManager(app)
@@ -198,7 +311,22 @@ class User(UserMixin, db.Model):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        if not self.password_hash:
+            return False
+
+        try:
+            return check_password_hash(self.password_hash, password)
+        except ValueError:
+            # Compatibilidad con registros viejos donde se guardo texto plano o hash mal formado.
+            if self.password_hash == password:
+                self.set_password(password)
+                try:
+                    db.session.add(self)
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                return True
+            return False
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -269,18 +397,18 @@ class Tercero(db.Model):
 
 class Celular(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    imei1 = db.Column(db.String(20), unique=True, nullable=False, index=True)
-    imei2 = db.Column(db.String(20), nullable=True, index=True)
-    modelo = db.Column(db.String(50), nullable=False, index=True)
+    imei1 = db.Column(db.String(20), unique=True, nullable=False)
+    imei2 = db.Column(db.String(20), nullable=True)
+    modelo = db.Column(db.String(50), nullable=False)
     color = db.Column(db.String(30), nullable=True)
     gb = db.Column(db.String(10), nullable=False)
     precio_compra = db.Column(db.Float, default=0.0)
     precio_cliente = db.Column(db.Float, default=0.0)
     precio_patinado = db.Column(db.Float, default=0.0)
-    estado = db.Column(db.String(20), default='Patinado', index=True)
+    estado = db.Column(db.String(20), default='Patinado')
     notas = db.Column(db.Text)
-    en_stock = db.Column(db.Boolean, default=True, index=True)
-    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota, index=True)
+    en_stock = db.Column(db.Boolean, default=True)
+    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
     tercero_id = db.Column(db.Integer, db.ForeignKey('tercero.id'), nullable=True)
     patinado_en = db.Column(db.DateTime, nullable=True)
     veces_ingresado = db.Column(db.Integer, default=1)  # Cuántas veces ha entrado al inventario
@@ -301,35 +429,65 @@ class CelularForm(FlaskForm):
 
 class Transaccion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    tipo = db.Column(db.String(20), nullable=False, index=True)
+    tipo = db.Column(db.String(20), nullable=False)
     monto = db.Column(db.Float, nullable=False)
     ganancia_neta = db.Column(db.Float, default=0.0)
     cash_recibido_retoma = db.Column(db.Float, default=0.0)
     descripcion = db.Column(db.Text)
-    fecha = db.Column(db.DateTime, default=obtener_fecha_bogota, index=True)
-    anulada = db.Column(db.Boolean, default=False, index=True)
+    fecha = db.Column(db.DateTime, default=obtener_fecha_bogota)
+    anulada = db.Column(db.Boolean, default=False)
     motivo_anulacion = db.Column(db.Text)
     ultimo_editor = db.Column(db.String(50))
     editado_en = db.Column(db.DateTime)
     motivo_edicion = db.Column(db.Text)
 
+class MovimientoCelular(db.Model):
+    """Bitacora de movimientos y notas de celulares."""
+    __tablename__ = 'movimiento_celular'
+
+    id = db.Column(db.Integer, primary_key=True)
+    celular_id = db.Column(db.Integer, nullable=True)
+    celular_imei = db.Column(db.String(20), nullable=True)
+    celular_modelo = db.Column(db.String(80), nullable=True)
+    accion = db.Column(db.String(60), nullable=False, default='Movimiento')
+    notas = db.Column(db.Text)
+    usuario = db.Column(db.String(50), nullable=False)
+    fecha = db.Column(db.DateTime, default=obtener_fecha_bogota, nullable=False)
+
+def registrar_movimiento_celular(celular=None, accion='Movimiento', notas=''):
+    """Registra un movimiento en bitacora para trazabilidad del inventario."""
+    usuario = 'Sistema'
+    if current_user and getattr(current_user, 'is_authenticated', False):
+        usuario = current_user.username
+
+    movimiento = MovimientoCelular(
+        celular_id=celular.id if celular else None,
+        celular_imei=celular.imei1 if celular else None,
+        celular_modelo=celular.modelo if celular else None,
+        accion=(accion or 'Movimiento')[:60],
+        notas=notas or '',
+        usuario=usuario,
+        fecha=obtener_fecha_bogota()
+    )
+    db.session.add(movimiento)
+
 # Modelo Dispositivo (para PC, Tablets, iPad, Cámaras, etc.)
 class Dispositivo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    tipo = db.Column(db.String(50), nullable=False, index=True)  # PC, Tablet, iPad, Cámara, etc.
-    marca = db.Column(db.String(50), nullable=False, index=True)
-    modelo = db.Column(db.String(100), nullable=False, index=True)
+    tipo = db.Column(db.String(50), nullable=False)  # PC, Tablet, iPad, Cámara, etc.
+    marca = db.Column(db.String(50), nullable=False)
+    modelo = db.Column(db.String(100), nullable=False)
     color = db.Column(db.String(30), nullable=True)  # Color del dispositivo
     especificaciones = db.Column(db.Text)  # RAM, Almacenamiento, Procesador, etc.
-    serial = db.Column(db.String(100), nullable=True, index=True)
+    serial = db.Column(db.String(100), nullable=True)
     precio_compra = db.Column(db.Float, default=0.0)
     precio_cliente = db.Column(db.Float, default=0.0)
     precio_patinado = db.Column(db.Float, default=0.0)
-    estado = db.Column(db.String(20), default='local', index=True)  # local, Patinado, Vendido, Servicio Técnico
+    estado = db.Column(db.String(20), default='local')  # local, Patinado, Vendido, Servicio Técnico
     cantidad = db.Column(db.Integer, default=1)
     notas = db.Column(db.Text)
-    en_stock = db.Column(db.Boolean, default=True, index=True)
-    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota, index=True)
+    en_stock = db.Column(db.Boolean, default=True)
+    fecha_entrada = db.Column(db.DateTime, default=obtener_fecha_bogota)
     tercero_id = db.Column(db.Integer, db.ForeignKey('tercero.id'), nullable=True)
     patinado_en = db.Column(db.DateTime, nullable=True)  # Fecha en que se patinó
     veces_ingresado = db.Column(db.Integer, default=1)  # Cuántas veces ha entrado al inventario
@@ -407,9 +565,20 @@ with app.app_context():
         print("✓ Tablas creadas exitosamente")
     except Exception as e:
         print(f"Error creando tablas: {e}")
+
+    # En desarrollo, por defecto omite migraciones de esquema en cada recarga.
+    run_startup_migrations_env = os.getenv('RUN_STARTUP_MIGRATIONS')
+    if run_startup_migrations_env is None:
+        debug_mode = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+        run_startup_migrations = not debug_mode
+    else:
+        run_startup_migrations = run_startup_migrations_env.lower() in ('true', '1', 'yes')
     
     # Migración: Agregar columna ganancia_neta si no existe
     try:
+        if not run_startup_migrations:
+            raise RuntimeError('SKIP_STARTUP_MIGRATIONS')
+
         from sqlalchemy import inspect, text
         inspector = inspect(db.engine)
         columns = [col['name'] for col in inspector.get_columns('transaccion')]
@@ -543,8 +712,54 @@ with app.app_context():
         except Exception as mig_deuda:
             print(f"Nota migración deuda: {mig_deuda}")
 
+        # Indices de rendimiento (idempotentes) para filtros y ordenes mas usados.
+        try:
+            run_startup_indexes_env = os.getenv('RUN_STARTUP_INDEXES', 'True')
+            run_startup_indexes = run_startup_indexes_env.lower() in ('true', '1', 'yes')
+            if run_startup_indexes:
+                quote = db.engine.dialect.identifier_preparer.quote
+
+                def ensure_index(table_name, index_name, columns):
+                    if not inspector.has_table(table_name):
+                        return
+                    existing_indexes = {idx['name'] for idx in inspector.get_indexes(table_name)}
+                    if index_name in existing_indexes:
+                        return
+
+                    quoted_table = quote(table_name)
+                    quoted_index = quote(index_name)
+                    quoted_cols = ', '.join(quote(col) for col in columns)
+                    with db.engine.connect() as conn:
+                        conn.execute(
+                            text(
+                                f'CREATE INDEX {quoted_index} '
+                                f'ON {quoted_table} ({quoted_cols})'
+                            )
+                        )
+                        conn.commit()
+                    print(f"✓ Indice creado: {index_name}")
+
+                ensure_index('celular', 'idx_celular_en_stock_id', ['en_stock', 'id'])
+                ensure_index('celular', 'idx_celular_estado_modelo', ['estado', 'modelo'])
+                ensure_index('dispositivo', 'idx_dispositivo_en_stock_estado_id', ['en_stock', 'estado', 'id'])
+                ensure_index('dispositivo', 'idx_dispositivo_tipo_estado', ['tipo', 'estado'])
+                ensure_index('dispositivo', 'idx_dispositivo_serial', ['serial'])
+                ensure_index('transaccion', 'idx_transaccion_fecha', ['fecha'])
+                ensure_index('transaccion', 'idx_transaccion_tipo_fecha', ['tipo', 'fecha'])
+                ensure_index('deuda', 'idx_deuda_tipo_pagado_fecha', ['tipo_deuda', 'pagado', 'fecha_creacion'])
+                ensure_index('abono_deuda', 'idx_abono_deuda_deuda_fecha', ['deuda_id', 'fecha'])
+                ensure_index('tercero', 'idx_tercero_activo_local_nombre', ['activo', 'local', 'nombre'])
+                ensure_index('movimiento_celular', 'idx_movimiento_celular_fecha', ['fecha'])
+            else:
+                print("⚡ Creacion de indices omitida (RUN_STARTUP_INDEXES=False).")
+        except Exception as idx_e:
+            print(f"Nota indices: {idx_e}")
+
     except Exception as e:
-        print(f"Nota migración: {e}")
+        if str(e) == 'SKIP_STARTUP_MIGRATIONS':
+            print("⚡ Migraciones de arranque omitidas (RUN_STARTUP_MIGRATIONS=False).")
+        else:
+            print(f"Nota migración: {e}")
 
 # Routes de Auth (igual que antes)
 @app.route('/register', methods=['GET', 'POST'])
@@ -620,38 +835,29 @@ def caja():
     
     transacciones = query.all()
     
-    # Cálculos agregados de las transacciones filtradas (usando Python ya que ya tenemos los datos)
+    # Cálculos agregados
     total_monto = sum(t.monto for t in transacciones)
     total_ganancia_neta = sum((t.ganancia_neta or 0) for t in transacciones)
     cantidad_transacciones = len(transacciones)
     
-    # Estadísticas globales usando agregaciones SQL (más eficiente)
-    stats_celulares = db.session.query(
-        db.func.count(Celular.id),
-        db.func.coalesce(db.func.sum(Celular.precio_compra), 0)
-    ).filter(Celular.en_stock == True).first()
-    cantidad_celulares = stats_celulares[0] or 0
-    inversion_celulares = float(stats_celulares[1] or 0)
+    # Estadísticas globales (como en index)
+    celulares_en_stock = Celular.query.filter_by(en_stock=True).all()
+    cantidad_celulares = len(celulares_en_stock)
+    inversion_celulares = sum((c.precio_compra or 0) for c in celulares_en_stock)
     
-    # Dispositivos en stock con agregación SQL
-    stats_dispositivos = db.session.query(
-        db.func.count(Dispositivo.id),
-        db.func.coalesce(db.func.sum(Dispositivo.precio_compra * Dispositivo.cantidad), 0)
-    ).filter(Dispositivo.en_stock == True).first()
-    cantidad_dispositivos = stats_dispositivos[0] or 0
-    inversion_dispositivos = float(stats_dispositivos[1] or 0)
+    # Dispositivos en stock
+    dispositivos_en_stock = Dispositivo.query.filter_by(en_stock=True).all()
+    cantidad_dispositivos = len(dispositivos_en_stock)
+    inversion_dispositivos = sum((d.precio_compra * d.cantidad or 0) for d in dispositivos_en_stock)
     
     # Inversión total (celulares + dispositivos)
     inversion_total = inversion_celulares + inversion_dispositivos
     
-    # Ganancias usando agregación SQL (una sola consulta)
-    tipos_venta = ['Venta', 'Venta Retoma', 'Venta Dispositivo']
-    stats_ventas = db.session.query(
-        db.func.coalesce(db.func.sum(Transaccion.monto), 0),
-        db.func.coalesce(db.func.sum(Transaccion.ganancia_neta), 0)
-    ).filter(Transaccion.tipo.in_(tipos_venta)).first()
-    ganancia = float(stats_ventas[0] or 0)
-    ganancia_neta_total_acumulada = float(stats_ventas[1] or 0)
+    # Ganancia total: suma de montos de todas las ventas (Venta, Venta Retoma, Venta Dispositivo)
+    ganancia = sum(t.monto for t in Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma', 'Venta Dispositivo'])).all())
+    # Ganancia neta acumulada: suma de ganancia_neta de todas las transacciones de venta
+    ventas_todas = Transaccion.query.filter(Transaccion.tipo.in_(['Venta', 'Venta Retoma', 'Venta Dispositivo'])).all()
+    ganancia_neta_total_acumulada = sum((t.ganancia_neta or 0) for t in ventas_todas)
     
     return render_template('caja/caja.html', transacciones=transacciones, tipo_filtro=tipo_filtro, 
                           fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, buscar_imei=buscar_imei,
@@ -831,7 +1037,11 @@ def editar_dispositivo(id):
             dispositivo.precio_patinado = limpiar_pesos(form.precio_patinado.data)
             dispositivo.cantidad = int(form.cantidad.data)
             dispositivo.estado = form.estado.data
-            dispositivo.notas = form.notas.data
+            dispositivo.notas = construir_historial_notas(
+                dispositivo.notas,
+                form.notas.data,
+                'Edicion'
+            )
             dispositivo.plan_retoma = bool(form.plan_retoma.data)
             db.session.commit()
             flash('Dispositivo actualizado.', 'success')
@@ -1596,6 +1806,11 @@ def api_vender_celular(id):
         descripcion = f'Venta {sub_tipo} {celular.modelo} IMEI1 {celular.imei1}'
         trans = Transaccion(tipo='Venta', monto=monto, ganancia_neta=ganancia_neta, descripcion=descripcion)
         db.session.add(trans)
+        registrar_movimiento_celular(
+            celular,
+            accion='Venta',
+            notas=f'Venta {sub_tipo}. Monto: {formato_pesos(monto)}. Ganancia neta: {formato_pesos(ganancia_neta)}'
+        )
         db.session.commit()
         
         return jsonify({
@@ -1647,6 +1862,14 @@ def api_generar_factura_celular(id):
         descripcion = f'Venta {sub_tipo} {celular.modelo} IMEI1 {celular.imei1} - Cliente: {cliente_nombre}'
         trans = Transaccion(tipo='Venta', monto=monto, ganancia_neta=ganancia_neta, descripcion=descripcion)
         db.session.add(trans)
+        registrar_movimiento_celular(
+            celular,
+            accion='Venta con factura',
+            notas=(
+                f'Venta {sub_tipo}. Cliente: {cliente_nombre}. '
+                f'Monto: {formato_pesos(monto)}. Metodo de pago: {metodo_pago}'
+            )
+        )
         db.session.commit()
         
         # Generar PDF formato ticket térmico 80mm
@@ -1901,6 +2124,8 @@ def reactivar_celular(id):
         return redirect(url_for('index'))
     
     try:
+        nota_anterior = celular.notas or ''
+
         # Actualizar datos del celular
         celular.modelo = request.form.get('modelo', celular.modelo).strip()
         celular.color = request.form.get('color', '').strip() or celular.color
@@ -1913,6 +2138,30 @@ def reactivar_celular(id):
         celular.en_stock = True
         celular.fecha_entrada = obtener_fecha_bogota()
         celular.veces_ingresado = (celular.veces_ingresado or 1) + 1
+
+        # Guardar nota anterior en historial antes de pisarla
+        if nota_anterior:
+            registrar_movimiento_celular(
+                celular,
+                accion='Nota',
+                notas=nota_anterior
+            )
+        # Guardar nota del reingreso en historial
+        if celular.notas:
+            registrar_movimiento_celular(
+                celular,
+                accion='Nota',
+                notas=f'[Reingreso #{celular.veces_ingresado}] {celular.notas}'
+            )
+
+        registrar_movimiento_celular(
+            celular,
+            accion='Reingreso',
+            notas=(
+                f'Celular reingresado al inventario. Estado: {celular.estado}. '
+                f'Ingreso #{celular.veces_ingresado}. Notas: {celular.notas or "Sin notas"}'
+            )
+        )
         
         db.session.commit()
         
@@ -1959,6 +2208,23 @@ def index():
             )
             print(f"Creando celular: IMEI1={form.imei1.data}, Modelo={form.modelo.data}")
             db.session.add(celular)
+            db.session.flush()
+            registrar_movimiento_celular(
+                celular,
+                accion='Ingreso',
+                notas=(
+                    f'Nuevo celular agregado. Estado: {celular.estado}. '
+                    f'Precio compra: {formato_pesos(celular.precio_compra)}. '
+                    f'Notas: {celular.notas or "Sin notas"}'
+                )
+            )
+            # Si viene con nota al ingresar, guardarla en el historial
+            if celular.notas:
+                registrar_movimiento_celular(
+                    celular,
+                    accion='Nota',
+                    notas=celular.notas
+                )
             db.session.commit()
             print("¡Celular guardado exitosamente!")
             flash('¡Celular agregado!', 'success')
@@ -2008,26 +2274,37 @@ def index():
     else:
         query = query.order_by(Celular.id.desc())
     
-    celulares = query.all()
+    # Paginación: 50 registros por página para evitar cargar miles a la vez
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    celulares = query.paginate(page=page, per_page=per_page, error_out=False)
+
     terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.local, Tercero.nombre).all()
 
     # Contar celulares en servicio técnico
     servicio_tecnico_count = Celular.query.filter_by(en_stock=True, estado='Servicio Técnico').count()
 
-    transacciones = Transaccion.query.order_by(Transaccion.fecha.desc()).all()
-    
-    # Ganancias usando agregación SQL (una sola consulta en lugar de dos)
-    tipos_venta = ['Venta', 'Venta Retoma']
-    stats_ventas = db.session.query(
-        db.func.coalesce(db.func.sum(Transaccion.monto), 0),
-        db.func.coalesce(db.func.sum(Transaccion.ganancia_neta), 0)
-    ).filter(Transaccion.tipo.in_(tipos_venta)).first()
-    ganancia = float(stats_ventas[0] or 0)
-    ganancia_neta_total = float(stats_ventas[1] or 0)
-    
-    # Inversión total: suma de precio_compra de todos los celulares en stock
-    inversion_total = sum((c.precio_compra or 0) for c in celulares)
-    return render_template('caja/index.html', form=form, celulares=celulares, terceros=terceros, transacciones=transacciones, ganancia=ganancia, ganancia_neta_total=ganancia_neta_total, inversion_total=inversion_total, search=search, estado_filtro=estado_filtro, orden=orden, servicio_tecnico_count=servicio_tecnico_count, user=current_user)
+    # Total en stock (para métrica)
+    total_stock = Celular.query.filter_by(en_stock=True).count()
+
+    # Inversión total: suma SQL (no Python) para evitar cargar todos los registros
+    inversion_total = db.session.query(func.sum(Celular.precio_compra)).filter(
+        Celular.en_stock == True
+    ).scalar() or 0
+
+    return render_template(
+        'caja/index.html',
+        form=form,
+        celulares=celulares,
+        terceros=terceros,
+        inversion_total=inversion_total,
+        total_stock=total_stock,
+        search=search,
+        estado_filtro=estado_filtro,
+        orden=orden,
+        servicio_tecnico_count=servicio_tecnico_count,
+        user=current_user
+    )
 
 # CRUD: Editar, Eliminar (igual, con check rol)
 @app.route('/editar/<int:id>', methods=['GET', 'POST'])
@@ -2041,7 +2318,18 @@ def editar(id):
 
     # GET: datos para modal
     if request.method == 'GET':
-        from flask import jsonify
+        # Historial de notas: movimientos donde la nota anterior quedó registrada
+        historial = MovimientoCelular.query.filter_by(
+            celular_id=celular.id, accion='Nota'
+        ).order_by(MovimientoCelular.fecha.desc()).limit(20).all()
+        historial_notas = [
+            {
+                'texto': m.notas,
+                'usuario': m.usuario,
+                'fecha': m.fecha.strftime('%d/%m/%Y %H:%M') if m.fecha else ''
+            }
+            for m in historial
+        ]
         return jsonify({
             'id': celular.id,
             'imei1': celular.imei1,
@@ -2053,15 +2341,19 @@ def editar(id):
             'precio_cliente': celular.precio_cliente,
             'precio_patinado': celular.precio_patinado,
             'estado': celular.estado,
-            'notas': celular.notas
+            'notas': celular.notas,
+            'historial_notas': historial_notas
         })
 
     # POST: actualizar con datos del modal
     try:
+        estado_anterior = celular.estado
+        notas_anteriores = celular.notas or ''
+        precio_compra_anterior = celular.precio_compra or 0
+
         imei1 = (request.form.get('imei1') or '').strip()
         if not imei1:
-            flash('IMEI1 es obligatorio.', 'error')
-            return redirect(url_for('index'))
+            return jsonify({'ok': False, 'mensaje': 'IMEI1 es obligatorio.'}), 400
 
         celular.imei1 = imei1
         celular.imei2 = (request.form.get('imei2') or '').strip() or None
@@ -2075,14 +2367,35 @@ def editar(id):
         celular.notas = (request.form.get('notas') or '').strip()
         celular.en_stock = (celular.estado != 'Vendido')
 
+        cambios = []
+        if estado_anterior != celular.estado:
+            cambios.append(f'Estado: {estado_anterior} -> {celular.estado}')
+        if notas_anteriores != (celular.notas or ''):
+            # Guardar el texto de la nota anterior en la bitácora para historial
+            if notas_anteriores:
+                registrar_movimiento_celular(
+                    celular,
+                    accion='Nota',
+                    notas=notas_anteriores
+                )
+            cambios.append('Nota actualizada')
+        if precio_compra_anterior != (celular.precio_compra or 0):
+            cambios.append(
+                f'Precio compra: {formato_pesos(precio_compra_anterior)} -> {formato_pesos(celular.precio_compra)}'
+            )
+
+        registrar_movimiento_celular(
+            celular,
+            accion='Edicion',
+            notas='; '.join(cambios) if cambios else 'Se actualizo informacion del celular.'
+        )
+
         db.session.commit()
-        flash('¡Celular actualizado!', 'success')
+        return jsonify({'ok': True, 'mensaje': '¡Celular actualizado correctamente!'})
     except Exception as e:
         db.session.rollback()
         print(f"Error al actualizar: {str(e)}")
-        flash(f'Error al actualizar celular: {str(e)}', 'error')
-
-    return redirect(url_for('index'))
+        return jsonify({'ok': False, 'mensaje': f'Error al actualizar: {str(e)}'}), 400
 
 
 @app.route('/reactivar_dispositivo/<int:id>', methods=['POST'])
@@ -2116,7 +2429,12 @@ def reactivar_dispositivo(id):
         dispositivo.precio_patinado = limpiar_pesos(request.form.get('precio_patinado', '0'))
         dispositivo.cantidad = int(request.form.get('cantidad') or dispositivo.cantidad or 1)
         dispositivo.estado = request.form.get('estado', 'Patinado')
-        dispositivo.notas = request.form.get('notas', '')
+        nota_reingreso = request.form.get('notas', '')
+        dispositivo.notas = construir_historial_notas(
+            dispositivo.notas,
+            nota_reingreso,
+            f'Reingreso #{(dispositivo.veces_ingresado or 1) + 1}'
+        )
         dispositivo.en_stock = True
         dispositivo.fecha_entrada = obtener_fecha_bogota()
         dispositivo.veces_ingresado = (dispositivo.veces_ingresado or 1) + 1
@@ -2137,6 +2455,14 @@ def eliminar(id):
         flash('Acceso denegado.', 'error')
         return redirect(url_for('index'))
     celular = Celular.query.get_or_404(id)
+    registrar_movimiento_celular(
+        celular,
+        accion='Eliminacion',
+        notas=(
+            f'Registro eliminado manualmente. Estado al eliminar: {celular.estado}. '
+            f'Notas del celular: {celular.notas or "Sin notas"}'
+        )
+    )
     db.session.delete(celular)
     db.session.commit()
     flash('¡Celular eliminado!', 'success')
@@ -2207,6 +2533,11 @@ def vender(id):
     descripcion = f'Venta {sub_tipo} {celular.modelo} IMEI1 {celular.imei1}'
     trans = Transaccion(tipo='Venta', monto=monto, ganancia_neta=ganancia_neta, descripcion=descripcion)
     db.session.add(trans)
+    registrar_movimiento_celular(
+        celular,
+        accion='Venta',
+        notas=f'Venta {sub_tipo}. Monto: {formato_pesos(monto)}. Ganancia neta: {formato_pesos(ganancia_neta)}'
+    )
     db.session.commit()
     flash(f'¡{celular.modelo} vendido como {sub_tipo}! Ganancia Neta: ${int(ganancia_neta):,}'.replace(',', '.'), 'success')
     return redirect(url_for('index'))
@@ -2250,6 +2581,14 @@ def generar_factura(celular_id):
     descripcion = f'Venta {sub_tipo} {celular.modelo} IMEI1 {celular.imei1} - Cliente: {cliente_nombre}'
     trans = Transaccion(tipo='Venta', monto=monto, ganancia_neta=ganancia_neta, descripcion=descripcion)
     db.session.add(trans)
+    registrar_movimiento_celular(
+        celular,
+        accion='Venta con factura',
+        notas=(
+            f'Venta {sub_tipo}. Cliente: {cliente_nombre}. '
+            f'Monto: {formato_pesos(monto)}. Metodo de pago: {metodo_pago}'
+        )
+    )
     db.session.commit()
     
     # Generar PDF formato ticket térmico 80mm
@@ -2839,10 +3178,81 @@ def cambiar_estado(id):
         celular.tercero_id = None
         celular.patinado_en = None
 
+    estado_anterior = celular.estado
     celular.estado = nuevo_estado
+    if nuevo_estado == 'Patinado' and tercero_id:
+        tercero_data = Tercero.query.get(int(tercero_id))
+        notas_mov = (
+            f'Estado: {estado_anterior} -> {nuevo_estado}. '
+            f'Patinado a: {tercero_data.local} - {tercero_data.nombre}' if tercero_data else
+            f'Estado: {estado_anterior} -> {nuevo_estado}'
+        )
+    else:
+        notas_mov = f'Estado: {estado_anterior} -> {nuevo_estado}'
+    registrar_movimiento_celular(celular, accion='Cambio de estado', notas=notas_mov)
     db.session.commit()
     flash(f'¡Cambio de estado exitoso! {celular.modelo} ahora es {nuevo_estado}.', 'success')
     return redirect(url_for('index'))
+
+
+@app.route('/api/movimientos-celular', methods=['GET', 'POST'])
+@login_required
+def api_movimientos_celular():
+    """Lista y crea movimientos manuales para el visor de base de datos."""
+    if request.method == 'GET':
+        movimientos = MovimientoCelular.query.order_by(MovimientoCelular.fecha.desc()).limit(300).all()
+        data = []
+        for mov in movimientos:
+            data.append({
+                'id': mov.id,
+                'celular_id': mov.celular_id,
+                'celular_imei': mov.celular_imei,
+                'celular_modelo': mov.celular_modelo,
+                'accion': mov.accion,
+                'notas': mov.notas or '',
+                'usuario': mov.usuario,
+                'fecha': mov.fecha.strftime('%d/%m/%Y %H:%M:%S') if mov.fecha else ''
+            })
+        return jsonify({'success': True, 'movimientos': data})
+
+    if current_user.role != 'Admin':
+        return jsonify({'success': False, 'error': 'Solo administradores pueden crear movimientos'}), 403
+
+    payload = request.get_json() or {}
+    celular_id = payload.get('celular_id')
+    accion = (payload.get('accion') or 'Nota manual').strip()[:60]
+    notas = (payload.get('notas') or '').strip()
+
+    celular = None
+    if celular_id:
+        celular = Celular.query.get(celular_id)
+        if not celular:
+            return jsonify({'success': False, 'error': 'Celular no encontrado'}), 404
+
+    registrar_movimiento_celular(celular=celular, accion=accion, notas=notas)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Movimiento creado'})
+
+
+@app.route('/api/movimientos-celular/<int:movimiento_id>', methods=['PUT', 'DELETE'])
+@login_required
+def api_detalle_movimiento_celular(movimiento_id):
+    """Actualiza o elimina un movimiento de la bitacora."""
+    if current_user.role != 'Admin':
+        return jsonify({'success': False, 'error': 'Solo administradores pueden editar movimientos'}), 403
+
+    movimiento = MovimientoCelular.query.get_or_404(movimiento_id)
+
+    if request.method == 'DELETE':
+        db.session.delete(movimiento)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Movimiento eliminado'})
+
+    payload = request.get_json() or {}
+    movimiento.accion = (payload.get('accion') or movimiento.accion or 'Movimiento').strip()[:60]
+    movimiento.notas = (payload.get('notas') or '').strip()
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Movimiento actualizado'})
 
 @app.route('/configuracion_empresa')
 @login_required
@@ -2854,109 +3264,150 @@ def configuracion_empresa():
     return render_template('configuracion/configuracion.html', user=current_user, config=config)
 
 
-def _serializar_valor_db(valor):
-    if valor is None or isinstance(valor, (str, int, float, bool)):
-        return valor
-    if isinstance(valor, bytes):
-        return f'<{len(valor)} bytes>'
-    if hasattr(valor, 'isoformat'):
-        try:
-            return valor.isoformat()
-        except TypeError:
-            pass
-    return str(valor)
-
-
-@app.route('/api/admin/database_browser')
+@app.route('/dashboard_base_datos')
 @login_required
-def api_database_browser():
+def dashboard_base_datos():
     if current_user.role != 'Admin':
-        return jsonify({'success': False, 'error': 'Acceso denegado'}), 403
+        flash('Acceso denegado.', 'error')
+        return redirect(url_for('index'))
 
     from sqlalchemy import inspect, text
 
     inspector = inspect(db.engine)
-    tables = sorted(inspector.get_table_names())
-    requested_table = (request.args.get('table') or '').strip()
-    selected_table = requested_table or (tables[0] if tables else '')
+    tabla_seleccionada = request.args.get('tabla', '')
+    refresh_cache = request.args.get('refresh_cache', '').lower() in ('1', 'true', 'yes')
 
-    if selected_table and selected_table not in tables:
-        return jsonify({'success': False, 'error': 'Tabla no encontrada'}), 404
+    try:
+        limite = int(request.args.get('limite', 50))
+    except (TypeError, ValueError):
+        limite = 50
+    limite = max(10, min(limite, 500))
 
-    page = max(request.args.get('page', 1, type=int) or 1, 1)
-    limit = request.args.get('limit', 25, type=int) or 25
-    limit = min(max(limit, 10), 100)
+    try:
+        pagina = int(request.args.get('pagina', 1))
+    except (TypeError, ValueError):
+        pagina = 1
+    pagina = max(1, pagina)
 
-    response = {
-        'success': True,
-        'tables': [{'name': table_name} for table_name in tables],
-        'selected_table': selected_table,
-        'columns': [],
-        'rows': [],
-        'pagination': {
-            'page': page,
-            'limit': limit,
-            'total_rows': 0,
-            'total_pages': 0,
-            'has_prev': False,
-            'has_next': False,
-        },
-    }
+    table_names = []
+    resumen_tablas = []
+    columnas_tabla = []
+    filas_preview = []
+    resumen_estados = []
+    total_tabla = 0
+    total_paginas = 1
+    db_error = None
 
-    if not selected_table:
-        return jsonify(response)
+    quote = db.engine.dialect.identifier_preparer.quote
 
-    columns = inspector.get_columns(selected_table)
-    column_names = [column['name'] for column in columns]
-    primary_keys = inspector.get_pk_constraint(selected_table).get('constrained_columns') or []
-    order_column = 'id' if 'id' in column_names else (primary_keys[0] if primary_keys else None)
+    try:
+        with db.engine.connect() as conn:
+            table_names, resumen_tablas = _get_dashboard_tables_cached(
+                inspector=inspector,
+                conn=conn,
+                quote=quote,
+                refresh=refresh_cache
+            )
 
-    response['columns'] = [
-        {
-            'name': column['name'],
-            'type': str(column['type']),
-            'nullable': column.get('nullable', True),
-        }
-        for column in columns
-    ]
+            if table_names and tabla_seleccionada not in table_names:
+                tabla_seleccionada = table_names[0]
 
-    safe_table_name = selected_table.replace('`', '')
-    order_clause = f" ORDER BY `{order_column}` DESC" if order_column else ''
+            if request.args.get('descargar', '').lower() == 'csv' and tabla_seleccionada:
+                quoted_selected = quote(tabla_seleccionada)
+                result_all = conn.execute(text(f'SELECT * FROM {quoted_selected}'))
+                columnas_csv = list(result_all.keys())
 
-    with db.engine.connect() as conn:
-        total_rows = conn.execute(
-            text(f"SELECT COUNT(*) FROM `{safe_table_name}`")
-        ).scalar() or 0
-        total_pages = (total_rows + limit - 1) // limit if total_rows else 0
+                output = StringIO()
+                writer = csv.writer(output)
+                writer.writerow(columnas_csv)
 
-        if total_pages and page > total_pages:
-            page = total_pages
+                for row in result_all:
+                    row_data = [
+                        '' if row._mapping.get(col) is None else str(row._mapping.get(col))
+                        for col in columnas_csv
+                    ]
+                    writer.writerow(row_data)
 
-        offset = (page - 1) * limit if total_rows else 0
-        result = conn.execute(
-            text(
-                f"SELECT * FROM `{safe_table_name}`{order_clause} LIMIT :limit OFFSET :offset"
-            ),
-            {'limit': limit, 'offset': offset},
-        )
+                csv_content = output.getvalue()
+                output.close()
 
-        rows = []
-        for row in result:
-            rows.append({
-                key: _serializar_valor_db(value)
-                for key, value in row._mapping.items()
-            })
+                safe_name = ''.join(ch if ch.isalnum() or ch in ('_', '-') else '_' for ch in tabla_seleccionada)
+                return Response(
+                    csv_content,
+                    mimetype='text/csv; charset=utf-8',
+                    headers={
+                        'Content-Disposition': f'attachment; filename="{safe_name}.csv"'
+                    }
+                )
 
-    response['rows'] = rows
-    response['pagination'] = {
-        'page': page,
-        'limit': limit,
-        'total_rows': total_rows,
-        'total_pages': total_pages,
-        'has_prev': page > 1,
-        'has_next': total_pages > 0 and page < total_pages,
-    }
-    return jsonify(response)
+            if table_names and tabla_seleccionada:
+                columnas_info = inspector.get_columns(tabla_seleccionada)
+                columnas_tabla = [col['name'] for col in columnas_info]
+                quoted_selected = quote(tabla_seleccionada)
+
+                total_tabla = conn.execute(
+                    text(f'SELECT COUNT(*) AS total FROM {quoted_selected}')
+                ).scalar() or 0
+                total_tabla = int(total_tabla)
+                total_paginas = max(1, (total_tabla + limite - 1) // limite)
+                pagina = min(pagina, total_paginas)
+                offset = (pagina - 1) * limite
+
+                result = conn.execute(
+                    text(
+                        f'SELECT * FROM {quoted_selected} '
+                        'LIMIT :limite OFFSET :offset'
+                    ),
+                    {'limite': limite, 'offset': offset}
+                )
+                filas_preview = [dict(row._mapping) for row in result]
+
+                for state_col in ['activo', 'en_stock', 'pagado', 'anulada']:
+                    if state_col in columnas_tabla:
+                        quoted_state = quote(state_col)
+                        activos = conn.execute(
+                            text(
+                                f'SELECT COUNT(*) FROM {quoted_selected} '
+                                f'WHERE {quoted_state} = 1'
+                            )
+                        ).scalar()
+                        inactivos = conn.execute(
+                            text(
+                                f'SELECT COUNT(*) FROM {quoted_selected} '
+                                f'WHERE {quoted_state} = 0'
+                            )
+                        ).scalar()
+                        nulos = conn.execute(
+                            text(
+                                f'SELECT COUNT(*) FROM {quoted_selected} '
+                                f'WHERE {quoted_state} IS NULL'
+                            )
+                        ).scalar()
+
+                        resumen_estados.append({
+                            'campo': state_col,
+                            'activos': int(activos or 0),
+                            'inactivos': int(inactivos or 0),
+                            'nulos': int(nulos or 0)
+                        })
+
+    except Exception as e:
+        db_error = str(e)
+
+    return render_template(
+        'configuracion/dashboard_base_datos.html',
+        user=current_user,
+        resumen_tablas=resumen_tablas,
+        tabla_seleccionada=tabla_seleccionada,
+        columnas_tabla=columnas_tabla,
+        filas_preview=filas_preview,
+        resumen_estados=resumen_estados,
+        limite=limite,
+        pagina=pagina,
+        total_paginas=total_paginas,
+        total_tabla=total_tabla,
+        db_error=db_error
+    )
 
 @app.route('/guardar_configuracion', methods=['POST'])
 @login_required

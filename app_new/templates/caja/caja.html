@@ -204,7 +204,7 @@
                             {{ (t.ganancia_neta or 0)|pesos }}
                         </span>
                     </td>
-                    <td>{{ t.fecha.strftime('%d/%m/%Y %H:%M:%S') }}</td>
+                    <td>{{ t.fecha.strftime('%d/%m/%Y %H:%M:%S') if t.fecha else 'Sin fecha' }}</td>
                 </tr>
                 {% endfor %}
             {% else %}

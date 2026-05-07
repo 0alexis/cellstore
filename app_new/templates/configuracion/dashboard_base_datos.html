@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block page_content %}
+<nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+    <div class="container">
+        <ul class="navbar-nav me-auto">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Celulares</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('dispositivos') }}">Dispositivos</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('caja') }}">Caja</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('configuracion_empresa') }}">⚙️ Configuración</a></li>
+            <li class="nav-item"><a class="nav-link active" href="{{ url_for('dashboard_base_datos') }}">🗄️ Dashboard BD</a></li>
+        </ul>
+        <span class="navbar-text">Rol: {{ user.role }} | Usuario: {{ user.username }}</span>
+    </div>
+</nav>
+
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-0">🗄️ Dashboard de Base de Datos</h3>
+            <small class="text-muted">Vista por tablas, estados y registros</small>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('configuracion_empresa') }}">← Volver a Configuración</a>
+    </div>
+
+    {% if db_error %}
+    <div class="alert alert-warning">
+        Error al consultar base de datos: {{ db_error }}
+    </div>
+    {% endif %}
+
+    <div class="row g-3 mb-4">
+        {% if resumen_tablas %}
+            {% for tabla in resumen_tablas %}
+            <div class="col-md-6 col-xl-3">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0 text-truncate" title="{{ tabla.name }}">{{ tabla.name }}</h6>
+                            <span class="badge bg-dark">{{ tabla.total }}</span>
+                        </div>
+                        {% if tabla.estado_col %}
+                        <div class="small text-muted mb-2">Estado por {{ tabla.estado_col }}</div>
+                        <div class="d-flex gap-2">
+                            <span class="badge bg-success">Activos: {{ tabla.activos }}</span>
+                            <span class="badge bg-secondary">Inactivos: {{ tabla.inactivos }}</span>
+                        </div>
+                        {% else %}
+                        <div class="small text-muted">Sin columna de activo/inactivo detectada</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-12">
+                <div class="alert alert-info mb-0">No se encontraron tablas en la base de datos.</div>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('dashboard_base_datos') }}" class="row g-3 align-items-end mb-3">
+                <div class="col-md-6 col-lg-4">
+                    <label class="form-label fw-bold">Tabla a visualizar</label>
+                    <select name="tabla" class="form-select" {% if not resumen_tablas %}disabled{% endif %}>
+                        {% for tabla in resumen_tablas %}
+                        <option value="{{ tabla.name }}" {% if tabla.name == tabla_seleccionada %}selected{% endif %}>
+                            {{ tabla.name }} ({{ tabla.total }} registros)
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 col-lg-2">
+                    <label class="form-label fw-bold">Registros por página</label>
+                    <input type="number" name="limite" class="form-control" value="{{ limite }}" min="10" max="500">
+                </div>
+                <div class="col-md-3 col-lg-2 d-grid">
+                    <button type="submit" class="btn btn-primary">Actualizar</button>
+                </div>
+                <div class="col-md-3 col-lg-2 d-grid">
+                    <a class="btn btn-outline-success {% if not tabla_seleccionada %}disabled{% endif %}"
+                       href="{{ url_for('dashboard_base_datos', tabla=tabla_seleccionada, descargar='csv') }}">
+                        Descargar CSV
+                    </a>
+                </div>
+                <div class="col-md-3 col-lg-2 d-grid">
+                    <a class="btn btn-outline-dark"
+                       href="{{ url_for('dashboard_base_datos', tabla=tabla_seleccionada, limite=limite, pagina=pagina, refresh_cache=1) }}">
+                        Refrescar cache
+                    </a>
+                </div>
+            </form>
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <strong>Tabla:</strong> {{ tabla_seleccionada or '-' }}
+                </div>
+                <div class="text-muted small">
+                    Total registros: {{ total_tabla }} | Página {{ pagina }} de {{ total_paginas }}
+                </div>
+            </div>
+
+            {% if resumen_estados %}
+            <div class="mb-3">
+                {% for estado in resumen_estados %}
+                <span class="badge bg-success me-1">{{ estado.campo }} activos: {{ estado.activos }}</span>
+                <span class="badge bg-secondary me-2">{{ estado.campo }} inactivos: {{ estado.inactivos }}</span>
+                <span class="badge bg-light text-dark me-2">{{ estado.campo }} nulos: {{ estado.nulos }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="table-responsive border rounded" style="max-height: 65vh; overflow: auto;">
+                <table class="table table-sm table-striped table-hover mb-0">
+                    <thead class="table-dark sticky-top">
+                        <tr>
+                            {% for col in columnas_tabla %}
+                            <th>{{ col }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if filas_preview %}
+                            {% for fila in filas_preview %}
+                            <tr>
+                                {% for col in columnas_tabla %}
+                                <td style="white-space: nowrap;">{{ fila[col] if fila[col] is not none else '-' }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="{{ columnas_tabla|length if columnas_tabla else 1 }}" class="text-center text-muted py-4">
+                                    No hay registros para mostrar en esta tabla.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if total_paginas > 1 %}
+            <div class="d-flex justify-content-between mt-3">
+                <a class="btn btn-outline-secondary {% if pagina <= 1 %}disabled{% endif %}"
+                   href="{{ url_for('dashboard_base_datos', tabla=tabla_seleccionada, limite=limite, pagina=pagina-1) }}">
+                    ← Anterior
+                </a>
+                <a class="btn btn-outline-secondary {% if pagina >= total_paginas %}disabled{% endif %}"
+                   href="{{ url_for('dashboard_base_datos', tabla=tabla_seleccionada, limite=limite, pagina=pagina+1) }}">
+                    Siguiente →
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

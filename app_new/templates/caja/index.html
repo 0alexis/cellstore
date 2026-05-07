@@ -78,7 +78,7 @@
                     </div>
                     <div class="flex-grow-1 ms-3">
                         <div class="small text-muted mb-1">Stock Total</div>
-                        <h4 class="mb-0 fw-bold">{{ celulares|length if celulares else 0 }}</h4>
+                        <h4 class="mb-0 fw-bold">{{ total_stock }}</h4>
                     </div>
                 </div>
             </div>
@@ -106,69 +106,6 @@
         </div>
     </div>
     
-    <div class="col-xl-2 col-lg-4 col-md-6">
-        <div class="card border-0 shadow-sm h-100 metric-card" style="border-left: 4px solid #198754 !important;">
-            <div class="card-body p-3">
-                <div class="d-flex align-items-center">
-                    <div class="flex-shrink-0">
-                        <div class="rounded-circle bg-success bg-opacity-10 p-2" style="width: 48px; height: 48px;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#198754" viewBox="0 0 16 16">
-                                <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
-                                <path d="M9.05 5H7v4.234c0 .654.521 1.134 1.033 1.134.512 0 1.033-.48 1.033-1.134V5z"/>
-                                <path d="M8.93 4.588A.5.5 0 0 1 9.5 5v5.998A1.5 1.5 0 0 1 8 12.5a1.5 1.5 0 0 1-1.5-1.502V5a.5.5 0 0 1 1 0v5.498a.5.5 0 0 0 1 0V5a.5.5 0 0 1 .43-.412z"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="flex-grow-1 ms-3">
-                        <div class="small text-muted mb-1">Ganancia Total</div>
-                        <h6 class="mb-0 fw-bold" style="font-size: 0.95rem;">{{ ganancia|pesos }}</h6>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-xl-2 col-lg-4 col-md-6">
-        <div class="card border-0 shadow-sm h-100 metric-card" style="border-left: 4px solid #ffc107 !important;">
-            <div class="card-body p-3">
-                <div class="d-flex align-items-center">
-                    <div class="flex-shrink-0">
-                        <div class="rounded-circle bg-warning bg-opacity-10 p-2" style="width: 48px; height: 48px;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#ffc107" viewBox="0 0 16 16">
-                                <path d="M2.97 1.35A1 1 0 0 1 3.73 1h8.54a1 1 0 0 1 .76.35l2.609 3.044A1.5 1.5 0 0 1 16 5.37v.255a2.375 2.375 0 0 1-4.25 1.458A2.371 2.371 0 0 1 9.875 8 2.37 2.37 0 0 1 8 7.083 2.37 2.37 0 0 1 6.125 8a2.37 2.37 0 0 1-1.875-.917A2.375 2.375 0 0 1 0 5.625V5.37a1.5 1.5 0 0 1 .361-.976l2.61-3.045zm1.78 4.275a1.375 1.375 0 0 0 2.75 0 .5.5 0 0 1 1 0 1.375 1.375 0 0 0 2.75 0 .5.5 0 0 1 1 0 1.375 1.375 0 1 0 2.75 0V5.37a.5.5 0 0 0-.12-.325L12.27 2H3.73L1.12 5.045A.5.5 0 0 0 1 5.37v.255a1.375 1.375 0 0 0 2.75 0 .5.5 0 0 1 1 0zM1.5 8.5A.5.5 0 0 1 2 9v6h12V9a.5.5 0 0 1 1 0v6h.5a.5.5 0 0 1 0 1H.5a.5.5 0 0 1 0-1H1V9a.5.5 0 0 1 .5-.5z"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="flex-grow-1 ms-3">
-                        <div class="small text-muted mb-1">Ganancia Neta</div>
-                        <h6 class="mb-0 fw-bold" style="font-size: 0.95rem;">{{ ganancia_neta_total|pesos if ganancia_neta_total else '0'|pesos }}</h6>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-xl-2 col-lg-4 col-md-6">
-        <div class="card border-0 shadow-sm h-100 metric-card" style="border-left: 4px solid #0dcaf0 !important;">
-            <div class="card-body p-3">
-                <div class="d-flex align-items-center">
-                    <div class="flex-shrink-0">
-                        <div class="rounded-circle bg-info bg-opacity-10 p-2" style="width: 48px; height: 48px;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#0dcaf0" viewBox="0 0 16 16">
-                                <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
-                                <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="flex-grow-1 ms-3">
-                        <div class="small text-muted mb-1">Transacciones</div>
-                        <h4 class="mb-0 fw-bold">{{ transacciones|length }}</h4>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="col-xl-2 col-lg-4 col-md-6">
         <div class="card border-0 shadow-sm h-100 metric-card" style="border-left: 4px solid #fd7e14 !important;">
             <div class="card-body p-3">
@@ -455,7 +392,7 @@ function formatearPesos(valor) {
 </div>
 
 <!-- Tabla Stock -->
-<h3 class="mb-3">Celulares en Stock ({{ celulares|length if celulares else 0 }})</h3>
+<h3 class="mb-3">Celulares en Stock ({{ total_stock }}) {% if celulares.pages > 1 %}<small class="text-muted fs-6">— página {{ celulares.page }} de {{ celulares.pages }}</small>{% endif %}</h3>
 <div class="table-responsive">
     <table class="table table-striped table-hover mb-0">
         <thead class="table-dark">
@@ -474,9 +411,9 @@ function formatearPesos(valor) {
             </tr>
         </thead>
         <tbody>
-            {% if celulares %}
-                {% for cel in celulares %}
-                <tr class="{% if not cel.en_stock %}table-secondary{% endif %}">
+            {% if celulares.items %}
+                {% for cel in celulares.items %}
+                <tr id="row-cel-{{ cel.id }}" class="{% if not cel.en_stock %}table-secondary{% endif %}">
                     <td>
                         {{ cel.imei1 }}
                         {% if not cel.en_stock %}
@@ -487,11 +424,11 @@ function formatearPesos(valor) {
                         {% endif %}
                     </td>
                     <td>{{ cel.imei2 or 'N/A' }}</td>
-                    <td>{{ cel.modelo }}</td>
+                    <td data-field-cel="{{ cel.id }}" data-field="modelo">{{ cel.modelo }}</td>
                     <td>{{ cel.color or 'N/A' }}</td>
                     <td>{{ cel.gb }}</td>
-                    <td>{{ cel.precio_cliente|pesos }}</td>
-                    <td>{{ cel.precio_patinado|pesos }}</td>
+                    <td data-field-cel="{{ cel.id }}" data-field="precio_cliente">{{ cel.precio_cliente|pesos }}</td>
+                    <td data-field-cel="{{ cel.id }}" data-field="precio_patinado">{{ cel.precio_patinado|pesos }}</td>
                     <td>
                         {% if cel.en_stock %}
                         <form method="POST" action="{{ url_for('cambiar_estado', id=cel.id) }}" style="display: inline;">
@@ -619,7 +556,7 @@ function formatearPesos(valor) {
                                 <h5 class="modal-title" id="editarModalLabel{{ cel.id }}">Editar Celular</h5>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
-                            <form method="POST" action="{{ url_for('editar', id=cel.id) }}" id="formEditar{{ cel.id }}">
+                            <form id="formEditar{{ cel.id }}" method="POST" action="{{ url_for('editar', id=cel.id) }}" onsubmit="submitEditarAjax(event, {{ cel.id }})">
                                 {{ form.hidden_tag() }}
                                 <div class="modal-body">
                                     <h6>Datos Básicos</h6>
@@ -688,17 +625,26 @@ function formatearPesos(valor) {
                                             <textarea class="form-control" name="notas" id="notas{{ cel.id }}" rows="2" placeholder="Ej: Recibido por trade-in"></textarea>
                                         </div>
                                     </div>
+
+                                    <!-- Historial de notas -->
+                                    <div id="historialNotas{{ cel.id }}" style="display:none;">
+                                        <h6 class="text-muted mt-2 mb-1"><small>Historial de notas anteriores</small></h6>
+                                        <div id="historialNotasLista{{ cel.id }}" class="border rounded p-2 bg-light" style="max-height:140px;overflow-y:auto;font-size:0.85rem;"></div>
+                                    </div>
                                 </div>
-                                <div class="modal-footer">
+                                <div id="mensajeEditar{{ cel.id }}" class="mx-3 mb-2" style="display:none;"></div>
+                                <div class="modal-footer" id="footerEditar{{ cel.id }}">
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                    <button type="submit" class="btn btn-success">Guardar Cambios</button>
+                                    <button type="submit" class="btn btn-success" id="btnGuardar{{ cel.id }}">Guardar Cambios</button>
                                 </div>
                             </form>
                         </div>
                     </div>
                 </div>
                 <!-- Modal Vendido (dentro del loop) -->
-                <div class="modal fade" id="ventaModal{{ cel.id }}" tabindex="-1">
+                <div class="modal fade" id="ventaModal{{ cel.id }}" tabindex="-1"
+                     data-precio-cliente="{{ cel.precio_cliente }}"
+                     data-precio-patinado="{{ cel.precio_patinado }}">
                     <div class="modal-dialog modal-lg">
                         <div class="modal-content">
                             <div class="modal-header bg-success text-white">
@@ -713,7 +659,7 @@ function formatearPesos(valor) {
                                         <div class="form-check">
                                             <input class="form-check-input" type="radio" name="tipo_venta_cel{{ cel.id }}" 
                                                    id="tipo-venta-cliente{{ cel.id }}" value="cliente" checked
-                                                   onchange="actualizarPrecioVentaCel({{ cel.id }}, {{ cel.precio_cliente }}, {{ cel.precio_patinado }})">
+                                                   onchange="actualizarPrecioVentaCel({{ cel.id }})">
                                             <label class="form-check-label" for="tipo-venta-cliente{{ cel.id }}">
                                                 <i class="fas fa-user me-1"></i>Venta Cliente
                                             </label>
@@ -721,7 +667,7 @@ function formatearPesos(valor) {
                                         <div class="form-check">
                                             <input class="form-check-input" type="radio" name="tipo_venta_cel{{ cel.id }}" 
                                                    id="tipo-venta-patinado{{ cel.id }}" value="patinado"
-                                                   onchange="actualizarPrecioVentaCel({{ cel.id }}, {{ cel.precio_cliente }}, {{ cel.precio_patinado }})">
+                                                   onchange="actualizarPrecioVentaCel({{ cel.id }})">
                                             <label class="form-check-label" for="tipo-venta-patinado{{ cel.id }}">
                                                 <i class="fas fa-store me-1"></i>Patinado
                                             </label>
@@ -1029,118 +975,45 @@ function formatearPesos(valor) {
                 {% endif %}
                 {% endfor %}
             {% else %}
-                <tr><td colspan="9" class="text-center py-4">No hay celulares en stock. <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">¡Agrega uno ahora!</button></td></tr>
+                <tr><td colspan="11" class="text-center py-4">No hay celulares en stock. <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">¡Agrega uno ahora!</button></td></tr>
             {% endif %}
         </tbody>
     </table>
 </div>
 
-<!-- Sección Caja -->
-<section id="caja">
-    <h3>Caja Reciente</h3>
-    <div class="table-responsive">
-        <table class="table table-striped table-hover">
-            <thead class="table-dark">
-                <tr>
-                    <th>Tipo</th>
-                    <th>Descripción</th>
-                    <th>Monto</th>
-                    <th>Ganancia Neta</th>
-                    <th>Fecha</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if transacciones %}
-                    {% for t in transacciones %}
-                    <tr>
-                        <td><span class="badge bg-success">{{ t.tipo }}</span></td>
-                        <td>{{ t.descripcion }}</td>
-                        <td><strong>{{ t.monto|pesos }}</strong></td>
-                        <td>
-                            <span class="badge bg-{{ 'success' if (t.ganancia_neta or 0) > 0 else 'danger' }}">
-                                {{ (t.ganancia_neta or 0)|pesos }}
-                            </span>
-                        </td>
-                        <td>{{ t.fecha.strftime('%d/%m/%Y %H:%M:%S') }}</td>
-                        <td>
-                            {% if t.anulada %}
-                                <span class="badge bg-danger">Anulada</span>
-                            {% else %}
-                                <span class="badge bg-success">Activa</span>
-                            {% endif %}
-                            {% if t.ultimo_editor %}
-                                <div class="text-muted small">Editó: {{ t.ultimo_editor }}{% if t.editado_en %} · {{ t.editado_en.strftime('%d/%m/%Y %H:%M') }}{% endif %}</div>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if user.role == 'Admin' and not t.anulada %}
-                                <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#corregirTx{{ t.id }}">Editar</button>
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
-                        </td>
-                    </tr>
+<!-- Paginación -->
+{% if celulares.pages > 1 %}
+<nav class="mt-3" aria-label="Paginación celulares">
+    <ul class="pagination justify-content-center flex-wrap">
+        {% if celulares.has_prev %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('index', page=celulares.prev_num, search=search, estado=estado_filtro, orden=orden) }}">Anterior</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">Anterior</span></li>
+        {% endif %}
 
-                    {% if user.role == 'Admin' %}
-                    <div class="modal fade" id="corregirTx{{ t.id }}" tabindex="-1">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Editar Transacción #{{ t.id }}</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <form method="POST" action="{{ url_for('corregir_transaccion', id=t.id) }}">
-                                    <div class="modal-body">
-                                        <div class="mb-3">
-                                            <label class="form-label">Nuevo Tipo</label>
-                                            <input type="text" name="nuevo_tipo" class="form-control" value="{{ t.tipo }}">
-                                        </div>
-                                        <div class="row">
-                                            <div class="col-md-6 mb-3">
-                                                <label class="form-label">Nuevo Monto</label>
-                                                <input type="text" name="nuevo_monto" class="form-control" value="{{ t.monto|int }}">
-                                            </div>
-                                            <div class="col-md-6 mb-3">
-                                                <label class="form-label">Nueva Ganancia Neta</label>
-                                                <input type="text" name="nueva_ganancia_neta" class="form-control" value="{{ t.ganancia_neta|int }}">
-                                            </div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Cash recibido (retoma)</label>
-                                            <input type="text" name="nuevo_cash" class="form-control" value="{{ (t.cash_recibido_retoma or 0)|int }}" placeholder="Solo aplica si es retoma">
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Nueva Descripción</label>
-                                            <textarea name="nueva_descripcion" class="form-control" rows="2">{{ t.descripcion }}</textarea>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label class="form-label">Motivo de edición <span class="text-danger">*</span></label>
-                                            <textarea name="motivo" class="form-control" rows="2" required placeholder="Ej: Error de digitación, monto correcto es..."></textarea>
-                                        </div>
-                                        <div class="alert alert-warning small mb-0">
-                                            Se actualiza la transacción y se registra quién la editó.
-                                        </div>
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                        <button type="submit" class="btn btn-warning">Guardar cambios</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
+        {% for p in celulares.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+                <li class="page-item {% if p == celulares.page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('index', page=p, search=search, estado=estado_filtro, orden=orden) }}">{{ p }}</a>
+                </li>
+            {% else %}
+                <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+        {% endfor %}
 
-                    {% endfor %}
-                {% else %}
-                    <tr><td colspan="7" class="text-center">Sin transacciones aún</td></tr>
-                {% endif %}
-            </tbody>
-        </table>
-    </div>
-</section>
+        {% if celulares.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('index', page=celulares.next_num, search=search, estado=estado_filtro, orden=orden) }}">Siguiente</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">Siguiente</span></li>
+        {% endif %}
+    </ul>
+    <p class="text-center text-muted small">Mostrando {{ celulares.items|length }} de {{ total_stock }} celulares</p>
+</nav>
+{% endif %}
 
 <!-- Script para formatear pesos automáticamente en inputs -->
 <script>
@@ -1218,6 +1091,12 @@ function formatearPesos(valor) {
     }
 
     function cargarDatosEditar(celularId) {
+        // Limpiar mensaje anterior y restaurar footer
+        const msgEl = document.getElementById(`mensajeEditar${celularId}`);
+        if (msgEl) { msgEl.style.display = 'none'; msgEl.innerHTML = ''; }
+        const footerEl = document.getElementById(`footerEditar${celularId}`);
+        if (footerEl) { footerEl.style.display = ''; }
+
         fetch(`/editar/${celularId}`)
             .then(response => response.json())
             .then(data => {
@@ -1232,7 +1111,109 @@ function formatearPesos(valor) {
                 document.getElementById(`imei2${celularId}`).value = data.imei2 || '';
                 document.getElementById(`estado${celularId}`).value = data.estado;
                 document.getElementById(`notas${celularId}`).value = data.notas || '';
+
+                // Mostrar historial de notas
+                const historialBox = document.getElementById(`historialNotas${celularId}`);
+                const historialLista = document.getElementById(`historialNotasLista${celularId}`);
+                if (historialBox && historialLista && data.historial_notas && data.historial_notas.length > 0) {
+                    historialLista.innerHTML = data.historial_notas.map(h =>
+                        `<div class="border-bottom pb-1 mb-1">
+                            <span class="text-muted">${h.fecha} · <strong>${h.usuario}</strong></span><br>
+                            <span>${h.texto || '<em>Sin texto</em>'}</span>
+                        </div>`
+                    ).join('');
+                    historialBox.style.display = '';
+                } else if (historialBox) {
+                    historialBox.style.display = 'none';
+                }
             });
+    }
+
+    async function submitEditarAjax(event, celularId) {
+        event.preventDefault();
+        const form = document.getElementById(`formEditar${celularId}`);
+        const btn = document.getElementById(`btnGuardar${celularId}`);
+        const msgEl = document.getElementById(`mensajeEditar${celularId}`);
+
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+        msgEl.style.display = 'none';
+        msgEl.innerHTML = '';
+
+        try {
+            const formData = new FormData(form);
+            const response = await fetch(`/editar/${celularId}`, {
+                method: 'POST',
+                body: formData
+            });
+
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseErr) {
+                throw new Error(`Respuesta inesperada del servidor (HTTP ${response.status})`);
+            }
+
+            msgEl.style.display = 'block';
+            if (data.ok) {
+                msgEl.innerHTML = `<div class="alert alert-success mb-0 py-2">
+                    <strong>✓</strong> ${data.mensaje}
+                </div>
+                <div class="text-end mt-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                </div>`;
+                const footer = document.getElementById(`footerEditar${celularId}`);
+                if (footer) footer.style.display = 'none';
+
+                // Actualizar celdas de la fila en la tabla sin recargar
+                actualizarFilaCelular(celularId, formData);
+            } else {
+                msgEl.innerHTML = `<div class="alert alert-danger mb-0 py-2">
+                    <strong>✗</strong> ${data.mensaje}
+                </div>`;
+                btn.disabled = false;
+                btn.textContent = 'Guardar Cambios';
+            }
+        } catch (err) {
+            msgEl.style.display = 'block';
+            msgEl.innerHTML = `<div class="alert alert-danger mb-0 py-2">Error: ${err.message}. Intenta de nuevo.</div>`;
+            btn.disabled = false;
+            btn.textContent = 'Guardar Cambios';
+        }
+    }
+
+    function pesosJS(rawValue) {
+        // Convierte "1.550.000" o 1550000 a "$1.550.000"
+        const num = parseInt(String(rawValue).replace(/[^\d]/g, ''), 10);
+        if (isNaN(num)) return rawValue;
+        return '$' + num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+
+    function actualizarFilaCelular(celularId, formData) {
+        const row = document.getElementById(`row-cel-${celularId}`);
+        if (!row) return;
+
+        // Actualizar celdas visibles
+        const campos = ['modelo', 'precio_cliente', 'precio_patinado'];
+        campos.forEach(campo => {
+            const cell = row.querySelector(`[data-field="${campo}"]`);
+            if (!cell) return;
+            const val = formData.get(campo) || '';
+            cell.textContent = (campo === 'precio_cliente' || campo === 'precio_patinado')
+                ? pesosJS(val)
+                : val;
+        });
+
+        // Actualizar data-attributes del modal de venta para que refleje precios nuevos
+        const ventaModal = document.getElementById(`ventaModal${celularId}`);
+        if (ventaModal) {
+            const pcRaw = String(formData.get('precio_cliente') || '').replace(/[^\d]/g, '');
+            const ppRaw = String(formData.get('precio_patinado') || '').replace(/[^\d]/g, '');
+            if (pcRaw) ventaModal.dataset.precioCliente = pcRaw;
+            if (ppRaw) ventaModal.dataset.precioPatinado = ppRaw;
+            // Refrescar precio mostrado en el modal de venta
+            actualizarPrecioVentaCel(celularId);
+        }
     }
 
     // Función para formatear números como pesos colombianos
@@ -1247,7 +1228,7 @@ function formatearPesos(valor) {
     }
 
     // Aplicar a todos los inputs de precio
-    document.querySelectorAll('input[name="precio_compra"], input[name="precio_cliente"], input[name="precio_patinado"], input[name^="valor_estimado"], input[name="cash_recibido"], input[name="nuevo_monto"], input[name="nueva_ganancia_neta"], input[name="nuevo_cash"]').forEach(input => {
+    document.querySelectorAll('input[name="precio_compra"], input[name="precio_cliente"], input[name="precio_patinado"], input[name^="valor_estimado"], input[name="cash_recibido"]').forEach(input => {
         input.addEventListener('input', function() {
             let valor = this.value;
             let formateado = formatearPesos(valor);
@@ -1545,7 +1526,7 @@ function formatearPesos(valor) {
     });
     
     // ===== FUNCIONES PARA VENTA DE CELULARES CON FACTURA =====
-    
+
     function formatearPesosCel(valor) {
         // Eliminar todo excepto números
         let num = valor.toString().replace(/\D/g, '');
@@ -1553,10 +1534,13 @@ function formatearPesos(valor) {
         return '$' + parseInt(num).toLocaleString('es-CO').replace(/,/g, '.');
     }
     
-    function actualizarPrecioVentaCel(id, precioCliente, precioPatinado) {
+    function actualizarPrecioVentaCel(id) {
+        const modal = document.getElementById(`ventaModal${id}`);
         const tipoCliente = document.getElementById(`tipo-venta-cliente${id}`);
         const precioSpan = document.getElementById(`precio-venta-cel${id}`);
-        
+        if (!modal || !precioSpan) return;
+        const precioCliente = parseFloat(modal.dataset.precioCliente) || 0;
+        const precioPatinado = parseFloat(modal.dataset.precioPatinado) || 0;
         if (tipoCliente && tipoCliente.checked) {
             precioSpan.textContent = formatearPesosCel(precioCliente);
         } else {
@@ -1677,5 +1661,7 @@ function formatearPesos(valor) {
     window.actualizarPrecioVentaCel = actualizarPrecioVentaCel;
     window.toggleCamposFacturaCel = toggleCamposFacturaCel;
     window.confirmarVentaCel = confirmarVentaCel;
+    window.editarMovimiento = editarMovimiento;
+    window.eliminarMovimiento = eliminarMovimiento;
 </script>
 {% endblock %}
