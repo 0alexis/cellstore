@@ -23,6 +23,10 @@ Sistema de gestión de inventario para tienda de celulares con seguimiento de ga
 
 ## 🚀 Instalación Rápida (Recomendado)
 
+### Opción 0: Instalador Linux para USB
+
+Si quieres llevar el sistema en una memoria USB e instalarlo en otro equipo Linux para que quede corriendo como servicio permanente, usa la guía de [BUILD_INSTALLER_LINUX.md](/home/ubutu/Escritorio/cellstore/cellstore/BUILD_INSTALLER_LINUX.md).
+
 ### Opción 1: Instalación Automática
 
 ```bash

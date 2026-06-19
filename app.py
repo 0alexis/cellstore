@@ -2078,6 +2078,40 @@ def verificar_imei(imei):
     return jsonify({'existe': False})
 
 
+@app.route('/api/imei_sugerencias')
+@login_required
+def api_imei_sugerencias():
+    """Devuelve sugerencias de IMEI/modelo para busqueda en vivo."""
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return jsonify({'items': []})
+
+    resultados = Celular.query.with_entities(
+        Celular.id,
+        Celular.imei1,
+        Celular.imei2,
+        Celular.modelo,
+        Celular.en_stock,
+        Celular.estado,
+    ).filter(
+        (Celular.imei1.contains(q)) |
+        (Celular.imei2.contains(q)) |
+        (Celular.modelo.contains(q))
+    ).order_by(Celular.id.desc()).limit(8).all()
+
+    items = []
+    for r in resultados:
+        imei_ref = r.imei1 or r.imei2 or ''
+        estado_txt = 'En stock' if r.en_stock else 'Vendido'
+        items.append({
+            'id': r.id,
+            'search_value': imei_ref,
+            'label': f"{imei_ref} - {r.modelo} ({estado_txt})"
+        })
+
+    return jsonify({'items': items})
+
+
 @app.route('/verificar_serial/<serial>')
 @login_required
 def verificar_serial(serial):
@@ -2278,9 +2312,9 @@ def index():
     # Evita N+1 al renderizar cel.tercero en la tabla
     query = query.options(joinedload(Celular.tercero))
 
-    # Paginación: menos registros por página para acelerar primer render
+    # Paginación
     page = request.args.get('page', 1, type=int)
-    per_page = 20
+    per_page = 25
     celulares = query.paginate(page=page, per_page=per_page, error_out=False)
 
     terceros_catalogo = [
@@ -2296,6 +2330,9 @@ def index():
 
     # Contar celulares en servicio técnico
     servicio_tecnico_count = Celular.query.filter_by(en_stock=True, estado='Servicio Técnico').count()
+
+    # Contar patinados en stock
+    patinados_count = Celular.query.filter_by(en_stock=True, estado='Patinado').count()
 
     # Total en stock (para métrica)
     total_stock = Celular.query.filter_by(en_stock=True).count()
@@ -2316,6 +2353,7 @@ def index():
         estado_filtro=estado_filtro,
         orden=orden,
         servicio_tecnico_count=servicio_tecnico_count,
+        patinados_count=patinados_count,
         user=current_user
     )
 

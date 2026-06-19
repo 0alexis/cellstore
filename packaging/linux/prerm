@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl stop cellstore.service >/dev/null 2>&1 || true
+    systemctl disable cellstore.service >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+fi

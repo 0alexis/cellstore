@@ -3,17 +3,24 @@ REM ============================================
 REM CellStore - Script de compilacion a .exe
 REM ============================================
 
+setlocal
+
+set NO_PAUSE=0
+if /I "%~1"=="--no-pause" set NO_PAUSE=1
+
 echo.
 echo ============================================
 echo   CELLSTORE - Compilacion a Ejecutable
 echo ============================================
 echo.
 
+set INNO_SETUP_COMPILER=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe
+
 REM Verificar que Python este instalado
 python --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python no esta instalado o no esta en el PATH
-    pause
+    if "%NO_PAUSE%"=="0" pause
     exit /b 1
 )
 
@@ -43,7 +50,7 @@ pyinstaller cellstore.spec --clean
 if errorlevel 1 (
     echo.
     echo [ERROR] La compilacion fallo
-    pause
+    if "%NO_PAUSE%"=="0" pause
     exit /b 1
 )
 
@@ -56,7 +63,8 @@ echo El ejecutable se encuentra en:
 echo   dist\CellStore.exe
 echo.
 echo IMPORTANTE:
-echo - Asegurate de tener MySQL corriendo
-echo - Configura el archivo .env antes de ejecutar
+echo - Si quieres instalador de Windows, ejecuta: %INNO_SETUP_COMPILER% installer_windows.iss
+echo - El instalador crea base SQLite local y auto inicio en Windows
 echo.
-pause
+if "%NO_PAUSE%"=="0" pause
+endlocal

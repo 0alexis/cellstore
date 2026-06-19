@@ -37,14 +37,42 @@ load_dotenv(env_file)
 # TODO: Migrar a factory pattern con app_new/__init__.py
 from app import app
 
+
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    return str(value).strip().lower() in ('true', '1', 'yes', 'on')
+
+
+def _should_use_waitress(debug):
+    server_backend = os.getenv('SERVER_BACKEND', '').strip().lower()
+    if server_backend:
+        return server_backend == 'waitress'
+    return not debug
+
+
+def _run_with_waitress(host, port):
+    from waitress import serve
+
+    threads = int(os.getenv('WAITRESS_THREADS', '8'))
+    connection_limit = int(os.getenv('WAITRESS_CONNECTION_LIMIT', '100'))
+    serve(
+        app,
+        host=host,
+        port=port,
+        threads=threads,
+        connection_limit=connection_limit,
+    )
+
 def     main():
     """Función principal para ejecutar la aplicación"""
     
     # Obtener configuración desde .env
     host = os.getenv('HOST', '0.0.0.0')
     port = int(os.getenv('PORT', 5001))
-    debug = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+    debug = _as_bool(os.getenv('DEBUG', 'False'))
     env = os.getenv('FLASK_ENV', 'development')
+    use_waitress = _should_use_waitress(debug)
     
     # Mensaje de inicio
     print("=" * 60)
@@ -53,16 +81,20 @@ def     main():
     print(f"🔧 Entorno: {env}")
     print(f"🌐 Host: {host}:{port}")
     print(f"🐛 Debug: {debug}")
+    print(f"🧰 Servidor: {'waitress' if use_waitress else 'flask-dev'}")
     print("=" * 60)
     
     # Ejecutar aplicación
     try:
-        app.run(
-            host=host,
-            port=port,
-            debug=debug,
-            use_reloader=debug  # Reloader solo en desarrollo
-        )
+        if use_waitress:
+            _run_with_waitress(host, port)
+        else:
+            app.run(
+                host=host,
+                port=port,
+                debug=debug,
+                use_reloader=debug  # Reloader solo en desarrollo
+            )
     except OSError as e:
         if "Address already in use" in str(e):
             print(f"\n❌ Error: El puerto {port} ya está en uso.")
@@ -70,6 +102,11 @@ def     main():
             print(f"   Ejemplo: PORT=5001\n")
         else:
             raise
+    except ImportError as e:
+        if 'waitress' in str(e).lower():
+            print("\n❌ Error: Waitress no está instalado.")
+            print("💡 Solución: instala dependencias nuevamente o recompila el ejecutable.\n")
+        raise
     except KeyboardInterrupt:
         print("\n\n👋 CellStore detenido correctamente")
     

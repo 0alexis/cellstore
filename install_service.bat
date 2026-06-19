@@ -20,19 +20,17 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Verificar que existe el ejecutable
-if not exist "dist\CellStore.exe" (
-    echo [ERROR] No se encontro dist\CellStore.exe
-    echo Primero ejecuta build_exe.bat para compilar
+REM Verificar que existe el ejecutable instalado o de dist
+if exist "%~dp0CellStore.exe" (
+    set EXE_PATH=%~dp0CellStore.exe
+) else if exist "%~dp0dist\CellStore.exe" (
+    set EXE_PATH=%~dp0dist\CellStore.exe
+) else (
+    echo [ERROR] No se encontro CellStore.exe
+    echo Primero compila o instala la aplicacion
     pause
     exit /b 1
 )
-
-REM Configurar variables
-set SERVICE_NAME=CellStoreService
-set DISPLAY_NAME=CellStore Flask App
-set DESCRIPTION=Aplicacion de inventario CellStore
-set EXE_PATH=%~dp0dist\CellStore.exe
 
 echo Creando tarea programada para inicio automatico...
 echo.
@@ -58,7 +56,7 @@ echo CellStore se iniciara automaticamente
 echo cuando enciendas el equipo.
 echo.
 echo Para iniciar ahora manualmente:
-echo   dist\CellStore.exe
+echo   %EXE_PATH%
 echo.
 echo Para desinstalar:
 echo   schtasks /delete /tn "CellStore Auto Start" /f

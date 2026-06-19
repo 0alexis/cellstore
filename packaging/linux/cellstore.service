@@ -1,0 +1,17 @@
+[Unit]
+Description=CellStore Web Application
+After=network.target
+
+[Service]
+Type=simple
+User=cellstore
+Group=cellstore
+WorkingDirectory=/opt/cellstore/app
+EnvironmentFile=-/etc/cellstore/cellstore.env
+ExecStart=/opt/cellstore/venv/bin/gunicorn --workers ${GUNICORN_WORKERS:-3} --bind 0.0.0.0:${PORT:-8000} run:app
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

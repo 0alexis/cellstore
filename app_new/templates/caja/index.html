@@ -45,6 +45,7 @@
         <form method="GET" class="d-flex flex-wrap gap-2 mobile-stack">
             <input
                 type="search"
+                id="search-mobile"
                 name="search"
                 class="form-control"
                 placeholder="Ej: 356789123456789"
@@ -126,6 +127,26 @@
             </div>
         </div>
     </div>
+
+    <div class="col-xl-2 col-lg-4 col-md-6">
+        <div class="card border-0 shadow-sm h-100 metric-card" style="border-left: 4px solid #20c997 !important;">
+            <div class="card-body p-3">
+                <div class="d-flex align-items-center">
+                    <div class="flex-shrink-0">
+                        <div class="rounded-circle bg-success bg-opacity-10 p-2" style="width: 48px; height: 48px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="#20c997" viewBox="0 0 16 16">
+                                <path d="M8 0a5.53 5.53 0 0 0-3.594 1.342C3.205 2.435 2.5 4.084 2.5 5.5V6h11v-.5c0-1.416-.705-3.065-1.906-4.158A5.53 5.53 0 0 0 8 0zM2 7v6.5A2.5 2.5 0 0 0 4.5 16h7a2.5 2.5 0 0 0 2.5-2.5V7H2zm6 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <div class="small text-muted mb-1">Patinados</div>
+                        <h4 class="mb-0 fw-bold">{{ patinados_count }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Búsqueda y Botón Agregar -->
@@ -133,7 +154,7 @@
     <div class="col-md-8 mb-3 mb-md-0">
         <form method="GET" class="d-flex flex-wrap gap-2 mobile-stack">
             <div style="flex: 1;">
-                <input type="text" name="search" class="form-control" placeholder="Buscar por modelo o IMEI" value="{{ search }}" inputmode="search" autocomplete="off">
+                <input type="text" id="search-main" name="search" class="form-control" placeholder="Buscar por modelo o IMEI" value="{{ search }}" inputmode="search" autocomplete="off">
             </div>
             <div style="min-width: 160px;">
                 <select name="estado" class="form-select">
@@ -1017,6 +1038,88 @@ function formatearPesos(valor) {
 
 <!-- Script para formatear pesos automáticamente en inputs -->
 <script>
+    const imeiSuggestionBox = document.createElement('div');
+    imeiSuggestionBox.className = 'list-group position-absolute shadow-sm';
+    imeiSuggestionBox.style.zIndex = '1200';
+    imeiSuggestionBox.style.display = 'none';
+    imeiSuggestionBox.style.maxHeight = '240px';
+    imeiSuggestionBox.style.overflowY = 'auto';
+    document.body.appendChild(imeiSuggestionBox);
+
+    let imeiSuggestionsTimer = null;
+
+    function hideImeiSuggestions() {
+        imeiSuggestionBox.style.display = 'none';
+        imeiSuggestionBox.innerHTML = '';
+    }
+
+    function showImeiSuggestions(inputEl, items) {
+        if (!items || !items.length) {
+            hideImeiSuggestions();
+            return;
+        }
+
+        const rect = inputEl.getBoundingClientRect();
+        imeiSuggestionBox.style.left = `${window.scrollX + rect.left}px`;
+        imeiSuggestionBox.style.top = `${window.scrollY + rect.bottom + 4}px`;
+        imeiSuggestionBox.style.width = `${rect.width}px`;
+
+        imeiSuggestionBox.innerHTML = items.map(item => (
+            `<button type="button" class="list-group-item list-group-item-action" data-search-value="${item.search_value}">${item.label}</button>`
+        )).join('');
+
+        imeiSuggestionBox.querySelectorAll('[data-search-value]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                inputEl.value = btn.dataset.searchValue;
+                hideImeiSuggestions();
+                inputEl.closest('form').submit();
+            });
+        });
+
+        imeiSuggestionBox.style.display = 'block';
+    }
+
+    async function cargarSugerenciasImei(inputEl) {
+        const value = (inputEl.value || '').trim();
+        if (value.length < 2) {
+            hideImeiSuggestions();
+            return;
+        }
+
+        try {
+            const resp = await fetch(`/api/imei_sugerencias?q=${encodeURIComponent(value)}`);
+            const data = await resp.json();
+            showImeiSuggestions(inputEl, data.items || []);
+        } catch (err) {
+            hideImeiSuggestions();
+        }
+    }
+
+    function prepararBusquedaEnVivo(inputEl) {
+        if (!inputEl) return;
+
+        inputEl.addEventListener('input', () => {
+            clearTimeout(imeiSuggestionsTimer);
+            imeiSuggestionsTimer = setTimeout(() => cargarSugerenciasImei(inputEl), 220);
+        });
+
+        inputEl.addEventListener('blur', () => {
+            setTimeout(hideImeiSuggestions, 150);
+        });
+
+        inputEl.addEventListener('focus', () => {
+            if ((inputEl.value || '').trim().length >= 2) {
+                cargarSugerenciasImei(inputEl);
+            }
+        });
+    }
+
+    prepararBusquedaEnVivo(document.getElementById('search-main'));
+    prepararBusquedaEnVivo(document.getElementById('search-mobile'));
+
+    window.addEventListener('scroll', hideImeiSuggestions, { passive: true });
+    window.addEventListener('resize', hideImeiSuggestions);
+
     // === VERIFICAR IMEI EXISTENTE ===
     let verificandoImei = false;
     const imei1Input = document.getElementById('imei1');

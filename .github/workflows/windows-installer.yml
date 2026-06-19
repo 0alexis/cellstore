@@ -1,0 +1,44 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: |
+          choco install innosetup --yes --no-progress
+
+      - name: Build executable and installer
+        shell: cmd
+        run: |
+          build_installer.bat --ci
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CellStoreInstaller
+          path: installer-dist/CellStoreInstaller.exe
+          if-no-files-found: error
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CellStoreExe
+          path: dist/CellStore.exe
+          if-no-files-found: error

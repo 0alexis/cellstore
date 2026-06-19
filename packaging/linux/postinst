@@ -1,0 +1,50 @@
+#!/bin/sh
+
+set -e
+
+APP_DIR="/opt/cellstore/app"
+VENV_DIR="/opt/cellstore/venv"
+WHEEL_DIR="/opt/cellstore/wheels"
+ENV_FILE="/etc/cellstore/cellstore.env"
+STATE_DIR="/var/lib/cellstore"
+UPLOAD_DIR="$STATE_DIR/uploads"
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 no esta instalado."
+    exit 1
+fi
+
+if ! python3 -m venv --help >/dev/null 2>&1; then
+    echo "python3-venv no esta disponible. Instala python3-venv e intenta de nuevo."
+    exit 1
+fi
+
+if ! id -u cellstore >/dev/null 2>&1; then
+    useradd --system --home "$STATE_DIR" --shell /usr/sbin/nologin cellstore
+fi
+
+mkdir -p "$STATE_DIR" "$UPLOAD_DIR" /etc/cellstore /opt/cellstore
+chown -R cellstore:cellstore "$STATE_DIR" /opt/cellstore
+
+if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR"
+fi
+
+"$VENV_DIR/bin/pip" install --upgrade pip
+"$VENV_DIR/bin/pip" install --no-index --find-links "$WHEEL_DIR" -r "$APP_DIR/requirements.txt"
+
+if grep -q '^SECRET_KEY=pendiente_generar_en_postinst$' "$ENV_FILE"; then
+    SECRET_KEY="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 64)"
+    sed -i "s/^SECRET_KEY=.*/SECRET_KEY=$SECRET_KEY/" "$ENV_FILE"
+fi
+
+chown root:root "$ENV_FILE"
+chmod 0644 "$ENV_FILE"
+
+systemctl daemon-reload
+systemctl enable cellstore.service
+systemctl restart cellstore.service
+
+echo
+echo "CellStore instalado y ejecutandose como servicio."
+echo "Abre en el navegador: http://IP_DEL_EQUIPO:8000"
