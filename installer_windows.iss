@@ -36,7 +36,7 @@ Name: "{group}\CellStore"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Desinstalar CellStore"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File \"{app}\configure_cellstore.ps1\" -InstallDir \"{app}\" -ProgramDataDir \"{commonappdata}\CellStore\""; Flags: runhidden waituntilterminated
+Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\configure_cellstore.ps1"" -InstallDir ""{app}"" -ProgramDataDir ""{commonappdata}\CellStore"""; Flags: runhidden waituntilterminated
 
 [UninstallRun]
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File \"{app}\remove_cellstore.ps1\" -InstallDir \"{app}\""; Flags: runhidden waituntilterminated
+Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\remove_cellstore.ps1"" -InstallDir ""{app}"""; Flags: runhidden waituntilterminated
